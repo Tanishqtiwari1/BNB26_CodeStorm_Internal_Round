@@ -47,7 +47,7 @@ class AgentReq(BaseModel):
     fault_type: Optional[str] = None
 
 
-@app.get("/api/info")
+@app.api_route("/api/info", methods=["GET", "HEAD"])
 def info():
     return svc.info()
 
@@ -181,10 +181,10 @@ if os.path.isdir(WEB):
             html = html.replace(f"/static/{a}", f"/static/{a}?v={_ver(a)}")
         return HTMLResponse(html)
 
-    @app.get("/")
+    @app.api_route("/", methods=["GET", "HEAD"])
     def landing():
         return _page("landing.html", ("landing.css", "landing.js"))
 
-    @app.get("/app")
+    @app.api_route("/app", methods=["GET", "HEAD"])
     def index():
         return _page("index.html", ("style.css", "app.js"))
