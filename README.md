@@ -31,6 +31,10 @@ AI AGENT FAILED → BLACK BOX FOUND WHERE → EXPLAINED WHY → REPLAYED FROM TH
 
 The **Live Demo** page walks through all ten steps against the live backend: run, fail, detect, root cause, why, checkpoint, patch, re-execute, compare, verify. The demo's patch value is read from the recorded retrieved document ("Standard room: 180 EUR"), not hard-coded.
 
+## Live app
+
+**https://blackbox-flight-recorder.onrender.com**  (free tier: the first load can take 30–60 s while the server wakes up)
+
 ## Deploy (one click)
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Tanishqtiwari1/BNB26_CodeStorm_Internal_Round)
