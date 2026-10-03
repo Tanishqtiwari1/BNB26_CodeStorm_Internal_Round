@@ -388,7 +388,12 @@ class GroqPolicy(OllamaPolicy):
         body = {"model": self.model, "messages": oai, "tools": TOOL_SPECS, "tool_choice": "auto", "temperature": 0, "max_tokens": 512}
         if "gpt-oss" in self.model:
             body["reasoning_effort"] = os.environ.get("GROQ_REASONING", "medium")  # "low" saves tokens but skips steps (e.g. the flight back)
-        r = self._req("/chat/completions", body)
+        try:
+            r = self._req("/chat/completions", body)
+        except Exception as e:  # the model produced an invalid tool call: record it as a model mistake in the trace
+            if "tool call validation failed" in str(e) or "tool_use_failed" in str(e):
+                return {"content": f"[invalid tool call rejected by provider] {str(e)[:160]}", "tool_calls": []}
+            raise
         msg = r["choices"][0]["message"]
         out = {"content": msg.get("content") or "", "tool_calls": [{"function": {"name": c["function"]["name"],
                "arguments": c["function"].get("arguments") or "{}"}} for c in (msg.get("tool_calls") or [])]}
