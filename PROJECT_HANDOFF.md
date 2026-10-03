@@ -6,6 +6,34 @@
 
 ---
 
+## 00. UPDATE (v2, branch `v2-graph`): read first
+
+Mentor feedback: "it assumes the pipeline is linear; use a known SLM, OpenTelemetry traces, and a graph approach that works when the error source drifts". Implemented:
+
+- **Agent:** `blackbox/react_agent.py`, a dynamic tool-calling agent.
+  - `OllamaPolicy` runs a real SLM (Ollama, default `qwen2.5:7b`, env `BLACKBOX_SLM`; native tool calling, loop guard, responses cached in `data/llm_cache.db`).
+  - `ScriptedPolicy("standard"|"verifier")` is the deterministic benchmark policy; it can resume from any checkpoint.
+  - **qwen2.5:1.5b was tested and fails this task** (malformed args, loops), so 7B is the default.
+- **Tracing:** `blackbox/otel.py`, OpenTelemetry tracer + `CollectingExporter`.
+  - Spans → steps: span parent = control edge, span links = data-flow edges, found by value provenance.
+  - `otlp_json_to_steps` + `POST /api/otlp/v1/traces` ingest traces from any instrumented agent.
+- **Faults:** `blackbox/faults_v2.py`.
+  - Decision faults (`wrong_arg`, `hallucinated_value`, `wrong_operation`, `dropped_field`; held-out `off_by_one`) and tool faults (`irrelevant_retrieval`, `unit_mixup`; held-out `truncated_context`, `stale_cache`).
+  - `occ` = which occurrence to hit.
+- **Benchmark:** `blackbox/generate_v2.py` (agent `react-sim`). Splits: train/test/heldout/**drift_loc**/**drift_topo**.
+- **Graph models:** `blackbox/graph_model.py`, a GNN (torch training, NumPy inference; local node features only) plus a PageRank RCA baseline.
+- **Pipeline:** `blackbox/model_v2.py` (train/evaluate/diagnose/GNN occlusion `contribs`). `model.diagnose` / `model.explain` dispatch on `bundle["kind"] == "v2"`.
+- **Replay:** `blackbox/replay_v2.py`. Restore checkpoint + history, patch, the agent re-plans, unchanged tool calls are reused from a memo; `replay.fork` dispatches for `react-*` agents. `replay.diff` aligns traces of different shapes (rows have `status` same/changed/added/removed).
+- **Demo:** `demo.py` uses the SLM if Ollama is up (injects a wrong hotel page), otherwise the benchmark policy (injects a 245 EUR price). `suggested_repair` derives the fix from the trace.
+- **Data:** `data/model_v2.joblib` (committed) and `data/metrics.json` (v2; v1 metrics saved as `data/metrics_v1.json`).
+- **CLI:** `cli all` = v2 pipeline, `cli data` = regenerate data with the committed model (Render), `cli all-v1` = legacy.
+- **v2 results:** GNN top-1 93.1 / 88.4 / 86.2 / 93.5 (seen / unseen types / location drift / topology drift) vs GBM 89.6 / 86.5 / 88.4 / 88.5. Repair: 90.9% at top-1, 98.1% within 3 replays; 34% of steps re-executed.
+- **Tests:** 27 (`tests/test_blackbox.py` v1 + `tests/test_v2.py` v2).
+- **Still to do:**
+  - verify the qwen2.5:7b live demo;
+  - merge `v2-graph` → `main` (triggers a Render redeploy; Render can't run the SLM, so it uses the benchmark policy);
+  - the UI redesign is still pending.
+
 ## 0. TL;DR for the next session
 
 - **The backend, ML and replay engine work and are tested (20/20 tests pass). Do not rewrite them.** Build on `blackbox/service.py` and `blackbox/api.py`.
