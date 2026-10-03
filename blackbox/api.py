@@ -125,6 +125,31 @@ def run_agent(req: AgentReq):
     return _call(svc.run_agent, req.agent, req.seed, req.fault_type)
 
 
+class SampleReq(BaseModel):
+    strategy: str = "plan_first"
+    bug: str = "none"
+    seed: Optional[int] = None
+
+
+@app.get("/api/connect/options")
+def sample_options():
+    return _call(svc.sample_options)
+
+
+@app.post("/api/connect/sample")
+def sample_agent(req: SampleReq):
+    """Run the bundled sample agent (a different agent from the built-in one) and ingest its OTel trace."""
+    return _call(svc.sample_agent, req.strategy, req.bug, req.seed)
+
+
+@app.post("/api/traces")
+def upload_trace(payload: dict):
+    """Upload a trace: OTLP/HTTP JSON (`resourceSpans`) or Black Box's simple format (`steps`)."""
+    if "resourceSpans" in payload:
+        return _call(svc.ingest_otlp, payload, payload.get("success"))
+    return _call(svc.ingest_simple, payload)
+
+
 @app.post("/api/demo/killer")
 def killer():
     return _call(svc.killer_demo)
@@ -145,14 +170,21 @@ if os.path.isdir(WEB):
         # Browsers must revalidate the frontend on every load, so a deploy never
         # mixes a new index.html with a cached old app.js / style.css.
         resp = await call_next(request)
-        if request.url.path == "/" or request.url.path.startswith("/static/"):
+        if request.url.path in ("/", "/app") or request.url.path.startswith("/static/"):
             resp.headers["Cache-Control"] = "no-cache"
         return resp
 
-    @app.get("/")
-    def index():
-        with open(os.path.join(WEB, "index.html"), encoding="utf-8") as f:
+    def _page(name, assets):
+        with open(os.path.join(WEB, name), encoding="utf-8") as f:
             html = f.read()
-        for name in ("style.css", "app.js"):
-            html = html.replace(f"/static/{name}", f"/static/{name}?v={_ver(name)}")
+        for a in assets:
+            html = html.replace(f"/static/{a}", f"/static/{a}?v={_ver(a)}")
         return HTMLResponse(html)
+
+    @app.get("/")
+    def landing():
+        return _page("landing.html", ("landing.css", "landing.js"))
+
+    @app.get("/app")
+    def index():
+        return _page("index.html", ("style.css", "app.js"))

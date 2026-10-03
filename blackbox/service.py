@@ -72,11 +72,13 @@ class Service:
             return b, None
         ids = self.baseline_runs(run)
         active = len(ids) >= BASELINE_MIN
+        neutral_doc = (150.0, 1e9, 0)  # no document-length judgement without this agent's own history
         if active:
             n = FT.build_norms((self.rec.steps(i) for i in ids), floor=0.01, all_tools=True)
-            norms = {**b["norms"], "vals": n["vals"], "literal_args": n["literal_args"], "all_tools": True}
+            norms = {**b["norms"], "vals": n["vals"], "literal_args": n["literal_args"], "all_tools": True,
+                     "doclen": n["doclen"] if n["doclen"][2] >= BASELINE_MIN else neutral_doc}
         else:
-            norms = {**b["norms"], "vals": {}, "literal_args": [], "all_tools": True}
+            norms = {**b["norms"], "vals": {}, "literal_args": [], "all_tools": True, "doclen": neutral_doc}
         info = {"service": (run.get("meta") or {}).get("service"), "healthy_runs": len(ids), "needed": BASELINE_MIN, "active": active}
         return {**b, "norms": norms}, info
 
@@ -151,6 +153,9 @@ class Service:
                  replay_attempts=r["replays"] or 0, repairs_verified=int(r["verified"] or 0),
                  steps_avoided=int(r["steps_avoided"] or 0), steps_reexecuted=int(r["steps_reexecuted"] or 0),
                  replay_steps_total=int(r["steps_total"] or 0))
+        sv = self.rec.reuse_savings()
+        s.update(model_calls_avoided=int(sv["model_calls_avoided"] or 0), tool_calls_avoided=int(sv["tool_calls_avoided"] or 0),
+                 time_saved_ms=float(sv["time_saved_ms"] or 0))
         _, failed = self.rec.list_runs(status="failed", limit=8)
         s["recent_failed"] = [{**f, **{"root_" + k: v for k, v in self.top_suspect(f["run_id"]).items()}} for f in failed]
         _, reps = self.rec.list_runs(forks_only=True, limit=5)
@@ -297,6 +302,96 @@ class Service:
                                          agent="external", meta={"trace_id": tid, "source": "otlp", "service": service.get(tid)}))
         self.rec.commit()
         return {"runs": ids}
+
+
+    # ---------------------------------------------------------------- bring your own agent
+    def _sample_module(self):
+        """examples/my_agent.py: a standalone grocery agent, unrelated to the built-in travel agent."""
+        import importlib.util
+        path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "examples", "my_agent.py")
+        spec = importlib.util.spec_from_file_location("bb_sample_agent", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def sample_agent(self, strategy="plan_first", bug="none", seed=None):
+        """Run the sample grocery agent once and ingest its OpenTelemetry trace exactly as an external agent's.
+        If the agent has fewer than BASELINE_MIN healthy runs, clean runs are recorded first (reported back)."""
+        ag = self._sample_module()
+        if strategy not in ag.STRATEGIES or bug not in ag.BUGS:
+            raise ValueError(f"strategy must be one of {list(ag.STRATEGIES)}, bug one of {list(ag.BUGS)}")
+        rnd = random.Random(seed)
+        service = "my-grocery-agent"
+        healthy = [r["run_id"] for r in self.rec._q("SELECT run_id, meta_json FROM runs WHERE agent='external' AND success=1 "
+                                                     "AND parent_run_id IS NULL")
+                   if json.loads(r["meta_json"] or "{}").get("service") == service]
+        seen = {i: 0 for i in ag.STORE}  # how often each item's price appears in healthy history
+        for rid in healthy:
+            for st in self.rec.steps(rid):
+                if st["name"] == "get_price" and st["args"].get("item") in seen:
+                    seen[st["args"]["item"]] += 1
+        warmup = 0
+        # Record clean runs until there are enough of them and every item has a price history of its own.
+        while warmup < 12 and (len(healthy) + warmup < BASELINE_MIN + 2 or min(seen.values()) < BASELINE_MIN):
+            r2 = random.Random(rnd.random())
+            need = [i for i, n in seen.items() if n < BASELINE_MIN]
+            items = need[:6] if need else r2.sample(list(ag.STORE), r2.randint(3, 5))
+            cart = {i: r2.randint(1, 4) for i in items}
+            tr, total, expected, _ = ag.run_agent(cart, r2.choice(list(ag.STRATEGIES)), "none", r2.randrange(10**6))
+            self.ingest_otlp(tr.otlp(), success=abs(total - expected) < 0.01)
+            for i in cart:
+                seen[i] += 1
+            warmup += 1
+        cart = {i: rnd.randint(1, 4) for i in rnd.sample(list(ag.STORE), rnd.randint(3, 5))}
+        tr, total, expected, bad = ag.run_agent(cart, strategy, bug, rnd.randrange(10**6))
+        ok = abs(total - expected) < 0.01
+        rid = self.ingest_otlp(tr.otlp(), success=ok)["runs"][0]
+        return {"run_id": rid, "success": ok, "total": total, "expected": expected, "bug_item": bad, "strategy": strategy,
+                "bug": bug, "bug_description": ag.BUGS[bug], "strategy_description": ag.STRATEGIES[strategy],
+                "n_spans": len(tr.spans), "warmup_runs": warmup}
+
+    def sample_options(self):
+        ag = self._sample_module()
+        return {"strategies": ag.STRATEGIES, "bugs": ag.BUGS}
+
+    def ingest_simple(self, payload):
+        """Black Box's simple trace format, for uploads:
+        {"question": str, "success": bool, "service": str?, "steps": [{"name", "kind", "parents"?, "args"?, "output"?, "latency_ms"?, "error"?}]}"""
+        steps_in = payload.get("steps")
+        if not isinstance(steps_in, list) or not steps_in:
+            raise ValueError("trace needs a non-empty 'steps' list")
+        if len(steps_in) > 500:
+            raise ValueError("trace too large (max 500 steps)")
+        kinds = {"llm", "tool", "retrieval", "final", "input"}
+        sids, steps = {}, []
+        for i, st in enumerate(steps_in):
+            if not isinstance(st, dict) or not st.get("name"):
+                raise ValueError(f"step {i} needs a 'name'")
+            name = str(st["name"])[:80]
+            sid = str(st.get("id") or f"s{i:02d}.{name}")
+            sids[st.get("id", name)] = sid
+            sids[sid] = sid
+            parents = []
+            for p in st.get("parents") or ([steps[-1]["sid"]] if steps else []):
+                if p not in sids:
+                    raise ValueError(f"step {i} ({name}): unknown parent {p!r}; parents must refer to earlier steps")
+                parents.append(sids[p])
+            kind = st.get("kind", "tool")
+            if kind not in kinds:
+                raise ValueError(f"step {i} ({name}): kind must be one of {sorted(kinds)}")
+            norm = lambda v: v if isinstance(v, dict) else ({} if v is None else {"value": v})
+            steps.append({"idx": i, "sid": sid, "kind": kind, "name": name, "role": name, "parents": parents,
+                          "args": norm(st.get("args")), "output": norm(st.get("output")),
+                          "latency_ms": float(st.get("latency_ms") or 0), "error": st.get("error") or None,
+                          "retries": 0, "reused": False})
+        ok = payload.get("success")
+        if ok is None:
+            ok = not any(s["error"] for s in steps)
+        rid = self.rec.save_run({"question": str(payload.get("question") or "Uploaded trace")[:500]}, steps,
+                                steps[-1]["output"], bool(ok), {}, None, split="external", agent="external",
+                                meta={"source": "upload", "service": str(payload.get("service") or "uploaded-agent")[:80]})
+        self.rec.commit()
+        return {"runs": [rid]}
 
 
 __all__ = ["Service", "ReplayUnsupported"]

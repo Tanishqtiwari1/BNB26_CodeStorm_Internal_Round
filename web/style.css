@@ -315,8 +315,25 @@ kbd { font: 11px var(--mono); border: 1px solid var(--line-2); border-bottom-wid
 .pal .it.on, .pal .it:hover { background: var(--s3); }
 .pal .ft { display: flex; gap: 14px; padding: 9px 14px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); flex-wrap: wrap; }
 
+/* problem strip, connect page */
+.vs { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.vs ul { margin: 10px 0 0; padding-left: 18px; color: var(--text-2); font-size: 14px; line-height: 1.7; }
+.vs b { color: var(--text); }
+.vsno { border-color: #4a1d22; background: linear-gradient(180deg, rgba(229,72,77,.07), transparent 60%), var(--s1); }
+.vsno .cap { color: #ff9b9f; }
+.vsyes { border-color: #1c4a3b; background: linear-gradient(180deg, rgba(16,185,129,.08), transparent 60%), var(--s1); }
+.vsyes .cap { color: var(--green-2); }
+.steps3 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+.n3 { width: 26px; height: 26px; border-radius: 7px; background: var(--indigo); color: #fff; display: grid; place-items: center; font: 700 12.5px var(--mono); }
+.drop { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 18px; border: 1.5px dashed var(--line-3); border-radius: 10px; color: var(--muted); cursor: pointer; font-size: 13.5px; transition: border-color .15s, background .15s; }
+.drop:hover, .drop.over { border-color: var(--indigo-2); background: var(--indigo-t); color: var(--text); }
+#tjson { width: 100%; min-height: 150px; margin-top: 10px; font: 12px/1.5 var(--mono); }
+.ep { background: var(--s0); border: 1px solid var(--line); padding: 4px 8px; border-radius: 6px; color: var(--indigo-3); }
+.cpbtn { position: absolute; top: 18px; right: 10px; }
+.rescard { border-top: 1px solid var(--line); padding-top: 4px; }
+
 @media (max-width: 1280px) { .split, .ws { grid-template-columns: 1fr; } .hero .ctas { position: static; margin-top: 20px; } .kpis { grid-template-columns: repeat(3, 1fr); } }
-@media (max-width: 900px) { .g2, .g3, .cols, .editor, .delta, .stp .det { grid-template-columns: 1fr; } .hero .hstats { grid-template-columns: 1fr 1fr; } .editor .cur { border-right: 0; border-bottom: 1px solid var(--line); } }
+@media (max-width: 900px) { .vs, .steps3, .g2, .g3, .cols, .editor, .delta, .stp .det { grid-template-columns: 1fr; } .hero .hstats { grid-template-columns: 1fr 1fr; } .editor .cur { border-right: 0; border-bottom: 1px solid var(--line); } }
 @media (max-width: 760px) {
   .seg { max-width: 100%; overflow-x: auto; }
   .grid > * { min-width: 0; }

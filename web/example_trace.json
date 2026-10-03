@@ -1,0 +1,15 @@
+{
+  "question": "Customer asks for a refund of order A-1042 (2 items).",
+  "service": "support-refund-bot",
+  "success": false,
+  "steps": [
+    {"id": "task", "name": "task", "kind": "input", "output": {"question": "Please refund order A-1042", "order_id": "A-1042"}},
+    {"id": "d1", "name": "call:get_order", "kind": "llm", "parents": ["task"], "output": {"tool": "get_order", "args": {"order_id": "A-1042"}}, "latency_ms": 640},
+    {"id": "t1", "name": "get_order", "kind": "tool", "parents": ["d1"], "args": {"order_id": "A-1042"}, "output": {"order_id": "A-1042", "total": 59.99, "items": 2}, "latency_ms": 85},
+    {"id": "d2", "name": "call:get_policy", "kind": "llm", "parents": ["task"], "output": {"tool": "get_policy", "args": {"topic": "refund"}}, "latency_ms": 510},
+    {"id": "t2", "name": "get_policy", "kind": "retrieval", "parents": ["d2"], "args": {"topic": "refund"}, "output": {"text": "Refunds: full order total within 30 days."}, "latency_ms": 120},
+    {"id": "d3", "name": "call:issue_refund", "kind": "llm", "parents": ["t1", "t2", "task"], "output": {"tool": "issue_refund", "args": {"order_id": "A-1042", "amount": 599.9}}, "latency_ms": 720},
+    {"id": "t3", "name": "issue_refund", "kind": "tool", "parents": ["d3"], "args": {"order_id": "A-1042", "amount": 599.9}, "output": {"refunded": 599.9, "status": "ok"}, "latency_ms": 210},
+    {"id": "final", "name": "final_answer", "kind": "final", "parents": ["t3"], "output": {"text": "Done! I refunded $599.90 for order A-1042."}, "latency_ms": 450}
+  ]
+}

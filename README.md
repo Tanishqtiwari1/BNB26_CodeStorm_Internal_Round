@@ -28,8 +28,9 @@ AI AGENT FAILED → BLACK BOX FOUND WHERE → EXPLAINED WHY → REPLAYED FROM TH
 - **Replay attempts:** saved replay runs.
 - **Repairs verified:** replays where a failed run passes the task check afterwards.
 - **Steps avoided:** steps reused instead of re-run, summed across replays.
+- **Model calls avoided / tool calls avoided / execution time not repeated:** reused model and tool steps across saved replays, with their recorded latency. No dollar figures are shown, because model costs aren't tracked.
 
-The **Live Demo** page walks through all ten steps against the live backend: run, fail, detect, root cause, why, checkpoint, patch, re-execute, compare, verify. The demo's patch value is read from the recorded retrieved document ("Standard room: 180 EUR"), not hard-coded.
+The **Live Demo** page walks through all ten steps against the live backend: run, fail, detect, root cause, why, checkpoint, patch, re-execute, compare, verify. The suggested repair is derived from the trace (e.g. re-run the faulty tool call), not hard-coded.
 
 ## v2 (what is deployed): graph-based debugging of dynamic agents
 
@@ -75,7 +76,10 @@ brew install ollama && ollama serve & ollama pull qwen2.5:7b   # real SLM for th
 
 ## Live app
 
-**https://blackbox-flight-recorder.onrender.com**  (free tier: the first load can take 30–60 s while the server wakes up)
+- **Home page:** https://blackbox-flight-recorder.onrender.com. It explains the problem with a real recorded run; the hero card's *Replay from root cause* button runs an actual replay.
+- **App:** https://blackbox-flight-recorder.onrender.com/app (Overview, Trace Investigation, Replay & Repair, Comparisons, Evaluation, Live Demo, **Connect Your Agent**).
+
+Free tier: the first load can take 30–60 s while the server wakes up.
 
 ## Deploy (one click)
 
@@ -200,6 +204,13 @@ python examples/my_agent.py --healthy 5                              # teach Bla
 python examples/my_agent.py --strategy running_total --bug cents     # then break it
 ```
 
+No terminal needed: the app's **Connect Your Agent** page (`/app#/connect`) offers three ways to try this:
+- run the grocery agent from the browser;
+- upload a trace file (Black Box's simple JSON format or OTLP JSON), with a refund-bot example (`web/example_trace.json`);
+- copy-paste snippets for Python, curl and OpenTelemetry.
+
+The simple format is one JSON object per run: `{"question", "service", "success", "steps": [{"id", "name", "kind", "parents", "args", "output"}]}`. Post it to `POST /api/traces`.
+
 External agents are judged only against **their own** earlier passing runs (the OTLP `service.name`); value baselines switch on after 3 healthy runs, and the investigation page shows which baseline was used.
 
 **Measured locally on this agent** (18 failed runs, 3 strategies × 3 bugs × 2 seeds, after 6 healthy runs): the true root cause is ranked #1 in **9/18**. Results by bug: unit bug 4/6, wrong quantity 3/6, missing tax step 2/6. The model was trained only on the travel workflow, so this is the honest transfer number: it shows the pipeline works on any OTel agent, and that accuracy on a new agent is lower until that agent has its own training data.
@@ -242,10 +253,10 @@ blackbox/graph_model.py GNN + PageRank baselines
 blackbox/model_v2.py    v2 training, evaluation, diagnosis
 blackbox/replay_v2.py   dynamic replay (agent re-plans after the patch)
 examples/my_agent.py    bring-your-own-agent OTLP example
-web/                    frontend (HTML/CSS/JS, no build step; Stitch "Obsidian Telemetry" design system)
+web/                    landing page (landing.*) + app (index.html, app.js, style.css); plain HTML/CSS/JS, no build step
 tests/                  end-to-end tests
 app.py                  legacy Streamlit dashboard (still works)
 ```
 
 ## API
-`GET /api/info` · `GET /api/stats` · `GET /api/replays` · `GET /api/demo/patch/{id}` · `GET /api/runs` · `GET /api/runs/{id}` · `GET /api/runs/{id}/trace` · `GET /api/runs/{id}/diagnosis` · `GET /api/runs/{id}/steps/{sid}/explanation` · `POST /api/runs/{id}/replay` `{sid, mode: repair|patch_output|patch_args, patch}` · `GET /api/runs/{id}/forks` · `GET /api/compare?a=&b=` · `GET /api/metrics` · `POST /api/agent/run` · `POST /api/demo/killer` · `POST /api/otlp/v1/traces`. Interactive docs are at `/docs`.
+`GET /api/info` · `GET /api/stats` · `GET /api/replays` · `GET /api/demo/patch/{id}` · `GET /api/runs` · `GET /api/runs/{id}` · `GET /api/runs/{id}/trace` · `GET /api/runs/{id}/diagnosis` · `GET /api/runs/{id}/steps/{sid}/explanation` · `POST /api/runs/{id}/replay` `{sid, mode: repair|patch_output|patch_args, patch}` · `GET /api/runs/{id}/forks` · `GET /api/compare?a=&b=` · `GET /api/metrics` · `POST /api/agent/run` · `POST /api/demo/killer` · `POST /api/otlp/v1/traces` · `POST /api/traces` (simple JSON or OTLP JSON) · `GET /api/connect/options` · `POST /api/connect/sample` `{strategy, bug}`. Interactive docs are at `/docs`.

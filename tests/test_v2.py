@@ -201,3 +201,22 @@ def test_expression_args_grounded_number_by_number():
     assert _match("2.5 * 2 + 1.25", [2.5, 2.0, 1.25], set())
     assert not _match("2.5 * 4 + 1.25", [2.5, 2.0, 1.25], set())  # 4 never observed upstream
     assert _match("0.0 + 2.5 * 1", [2.5], set())  # constants 0 and 1 need no source
+
+
+def test_bring_your_own_agent_upload_and_sample(v2):
+    from blackbox.service import Service
+    svc = Service(db=v2["db"], model_path=v2["model"], metrics_path=v2["metrics_path"])
+    # uploaded trace: the refund decision uses an amount no tool returned
+    ex = json.load(open(os.path.join(os.path.dirname(__file__), "..", "web", "example_trace.json")))
+    rid = svc.ingest_simple(ex)["runs"][0]
+    a = svc.analysis(rid)
+    assert a["root_cause"]["sid"] == "d3" and a["baseline"]["service"] == "support-refund-bot"
+    with pytest.raises(ValueError):
+        svc.ingest_simple({"steps": [{"name": "x", "parents": ["missing"]}]})
+    # sample agent: warm-up gives every item its own price history, so the unit bug is found at the tool call
+    r = svc.sample_agent("running_total", "cents", seed=101)
+    assert not r["success"] and r["warmup_runs"] > 0
+    a = svc.analysis(r["run_id"])
+    step = next(s for s in svc.rec.steps(r["run_id"]) if s["sid"] == a["root_cause"]["sid"])
+    assert step["name"] == "get_price" and step["args"]["item"] == r["bug_item"]
+    assert a["baseline"]["active"]

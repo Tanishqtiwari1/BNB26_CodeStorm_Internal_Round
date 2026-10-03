@@ -133,6 +133,14 @@ class Recorder:
             "FROM runs f JOIN runs p ON p.run_id=f.parent_run_id "
             "JOIN (SELECT run_id, COUNT(*) n FROM steps GROUP BY run_id) t ON t.run_id=f.run_id")[0]
 
+    def reuse_savings(self):
+        """What replays did NOT have to execute again: reused model calls and their recorded time."""
+        return self._q(
+            "SELECT SUM(CASE WHEN s.kind IN ('llm','final') THEN 1 ELSE 0 END) model_calls_avoided, "
+            "SUM(CASE WHEN s.kind IN ('tool','retrieval') THEN 1 ELSE 0 END) tool_calls_avoided, "
+            "ROUND(SUM(s.latency_ms),1) time_saved_ms "
+            "FROM steps s JOIN runs f USING(run_id) WHERE f.parent_run_id IS NOT NULL AND s.reused=1")[0]
+
     def list_runs(self, status=None, split=None, agent=None, forks=False, parent=None, q=None,
                   limit=50, offset=0, forks_only=False):
         """Parameterised run listing with per-run step count and total duration."""
