@@ -6,7 +6,6 @@ import os
 from typing import Any, Literal, Optional
 
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -134,6 +133,26 @@ def killer():
 if os.path.isdir(WEB):
     app.mount("/static", StaticFiles(directory=WEB), name="static")
 
+    from fastapi.responses import HTMLResponse
+    import hashlib
+
+    def _ver(name):
+        with open(os.path.join(WEB, name), "rb") as f:
+            return hashlib.md5(f.read()).hexdigest()[:10]
+
+    @app.middleware("http")
+    async def _no_stale_assets(request, call_next):
+        # Browsers must revalidate the frontend on every load, so a deploy never
+        # mixes a new index.html with a cached old app.js / style.css.
+        resp = await call_next(request)
+        if request.url.path == "/" or request.url.path.startswith("/static/"):
+            resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
     @app.get("/")
     def index():
-        return FileResponse(os.path.join(WEB, "index.html"))
+        with open(os.path.join(WEB, "index.html"), encoding="utf-8") as f:
+            html = f.read()
+        for name in ("style.css", "app.js"):
+            html = html.replace(f"/static/{name}", f"/static/{name}?v={_ver(name)}")
+        return HTMLResponse(html)
