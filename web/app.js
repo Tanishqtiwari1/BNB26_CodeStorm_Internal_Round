@@ -1,8 +1,8 @@
-/* BLACK BOX — AI Agent Flight Recorder.  DETECT → EXPLAIN → REPLAY → REPAIR → VERIFY
-   Plain ES2020, no build step. Every number shown comes from the API. */
+/* BLACK BOX — AI Agent Flight Recorder.   DETECT → EXPLAIN → REPLAY → REPAIR → VERIFY
+   Plain ES2020, no build step. Every number on screen comes from the API. */
 "use strict";
 
-// ------------------------------------------------------------------ utils
+// ================================================================== utils
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const view = () => $("#view");
@@ -11,26 +11,31 @@ const pct = (x, d = 0) => (x == null ? "—" : `${(x * 100).toFixed(d)}%`);
 const num = (x) => (x == null ? "—" : Number(x).toLocaleString());
 const ms = (x) => (x == null ? "—" : x >= 1000 ? `${(x / 1000).toFixed(2)}s` : `${Math.round(x)}ms`);
 const money = (x) => (x == null ? "—" : `$${Number(x).toLocaleString(undefined, { maximumFractionDigits: 2 })}`);
-const ago = (t) => { if (!t) return "—"; const s = Date.now() / 1000 - t; if (s < 60) return "just now"; if (s < 3600) return `${Math.floor(s / 60)}m ago`; if (s < 86400) return `${Math.floor(s / 3600)}h ago`; return new Date(t * 1000).toLocaleDateString(); };
-const st = (ok) => (ok ? `<span class="b ok">SUCCESS</span>` : `<span class="b fail">FAILED</span>`);
-const kind = (k) => `<span class="kind ${esc(k)}">${esc((k || "").toUpperCase())}</span>`;
-const short = (id) => `#${String(id).slice(0, 6).toUpperCase()}`;
+const ago = (t) => { if (!t) return "—"; const s = Date.now() / 1000 - t; if (s < 60) return "just now"; if (s < 3600) return `${Math.floor(s / 60)} min ago`; if (s < 86400) return `${Math.floor(s / 3600)} hr ago`; return new Date(t * 1000).toLocaleDateString(); };
+const rid = (id) => `#run_${String(id).slice(0, 6)}`;
+const nn = (i) => String(i + 1).padStart(2, "0");
 const go = (h) => { location.hash = h; };
+const statusPill = (ok, repaired) => (repaired ? `<span class="st rep">✓ Repaired</span>` : ok ? `<span class="st ok">Success</span>` : `<span class="st fail">Failed</span>`);
 
-const ICON = {
-  detect: '<path d="M12 3 2 21h20L12 3z"/><path d="M12 10v4"/><path d="M12 17.5v.01"/>',
-  explain: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+const IC = {
+  overview: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+  runs: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>',
+  trace: '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>',
   replay: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
-  repair: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/>',
-  verify: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
-  overview: '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>',
-  runs: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
-  compare: '<circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M6 9v6a3 3 0 0 0 3 3h6"/><path d="M18 15V9a3 3 0 0 0-3-3H9"/>',
-  eval: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
-  demo: '<path d="m6 4 14 8-14 8z"/>',
-  check: '<path d="m5 12 5 5 9-10"/>', x: '<path d="M6 6l12 12M18 6 6 18"/>', arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+  compare: '<path d="M7 7h11l-3-3M17 17H6l3 3"/>',
+  eval: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 15l3-3 3 2 4-5"/>',
+  demo: '<circle cx="12" cy="12" r="9"/><path d="m10 8 6 4-6 4z"/>',
+  about: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+  copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>',
+  check: '<path d="m5 12 5 5 9-10"/>', x: '<path d="M6 6l12 12M18 6 6 18"/>', alert: '<circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16v.01"/>',
+  bolt: '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>', arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>', ff: '<path d="m4 6 7 6-7 6zM13 6l7 6-7 6z"/>',
+  eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>', down: '<path d="M12 5v14M6 13l6 6 6-6"/>',
+  code: '<path d="m8 8-4 4 4 4M16 8l4 4-4 4"/>', graph: '<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M7.5 7.8 11 16M16.5 7.8 13 16M8.5 6h7"/>',
+  list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>', shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
+  wand: '<path d="m15 4 5 5L9 20H4v-5z"/><path d="m13 6 5 5"/>', term: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/>',
 };
-const icon = (n) => `<svg class="i" viewBox="0 0 24 24">${ICON[n] || ""}</svg>`;
+const icon = (n, s = "") => `<svg class="i" viewBox="0 0 24 24" ${s}>${IC[n] || ""}</svg>`;
 
 async function api(path, opts = {}) {
   const r = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
@@ -41,82 +46,132 @@ async function api(path, opts = {}) {
   }
   return r.json();
 }
-function toast(msg) { const t = document.createElement("div"); t.className = "toast"; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 6000); }
+function toast(m) { const t = document.createElement("div"); t.className = "toast"; t.textContent = m; document.body.appendChild(t); setTimeout(() => t.remove(), 5000); }
 function jsonHtml(o) {
   return esc(JSON.stringify(o, null, 2)).replace(/(&quot;(?:[^&]|&(?!quot;))*?&quot;)(\s*:)?|\b(true|false|null)\b|(-?\d+\.?\d*(?:e[+-]?\d+)?)/g,
-    (m, s, c, b, n) => s ? (c ? `<span class="k">${s}</span>${c}` : `<span class="s">${s}</span>`) : b ? `<span class="bo">${b}</span>` : `<span class="n">${n}</span>`);
+    (m, s, c, b, n) => s ? (c ? `<span class="k">${s}</span>${c}` : `<span class="s">${s}</span>`) : b ? `<span class="b">${b}</span>` : `<span class="n">${n}</span>`);
 }
 function summarize(o) {
   if (o == null) return "—";
   if (typeof o !== "object") return String(o);
   if (o.error) return `error: ${o.error}`;
   if (o.tool && o.args) return `${o.tool}(${Object.values(o.args).map((v) => (typeof v === "string" ? v : JSON.stringify(v))).join(", ")})`;
-  if (o.question) return `"${o.question.slice(0, 50)}…"`;
-  if (o.total_usd != null) return `${money(o.total_usd)} · ${o.within_budget ? "within" : "over"} budget`;
-  if (o.text) return `"${o.text.slice(0, 44)}…"`;
+  if (o.question) return `“${o.question.slice(0, 90)}…”`;
+  if (o.total_usd !== undefined) return `${money(o.total_usd)} · ${o.within_budget ? "within" : "over"} budget`;
+  if (o.text) return `“${o.text.slice(0, 70)}…”`;
   for (const k of ["value", "usd", "rate", "amount"]) if (o[k] != null) return `${k}: ${typeof o[k] === "number" ? o[k].toLocaleString(undefined, { maximumFractionDigits: 6 }) : o[k]}${o.currency ? " " + o.currency : ""}`;
-  if (o.within_budget != null) return `within_budget: ${o.within_budget} (margin ${o.margin})`;
+  if (o.within_budget != null) return `within_budget: ${o.within_budget}`;
   if (o.legs) return `${o.legs.length} leg(s), ${o.travelers ?? "?"} traveler(s), budget ${o.budget ?? "?"}`;
-  if (o.note) return o.note;
-  const s = JSON.stringify(o); return s.length > 56 ? s.slice(0, 56) + "…" : s;
+  const s = JSON.stringify(o); return s.length > 80 ? s.slice(0, 80) + "…" : s;
 }
-const empty = (t, msg, btn = "") => `<div class="empty"><div class="t">${t}</div><div>${msg}</div>${btn ? `<div class="mt">${btn}</div>` : ""}</div>`;
+const titleCase = (s) => s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+function stepName(s) {
+  if (s.kind === "input") return "User Task";
+  if (s.name === "final_answer") return "Final Answer";
+  if (s.name.startsWith("call:")) return `Decide · ${titleCase(s.name.slice(5))}`;
+  return titleCase(s.name);
+}
+const kindLabel = (s) => ({ llm: "LLM DECISION", retrieval: "RETRIEVAL", tool: "TOOL CALL", final: "LLM ANSWER", input: "INPUT" }[s.kind] || s.kind.toUpperCase());
+const empty = (t, m, b = "") => `<div class="empty"><div class="t">${t}</div><div>${m}</div>${b ? `<div class="mt">${b}</div>` : ""}</div>`;
 const loading = () => { view().innerHTML = `<div class="empty"><span class="spin"></span></div>`; };
 function descendants(steps, sid) {
   const out = new Set([sid]); let grew = true;
   while (grew) { grew = false; for (const s of steps) if (!out.has(s.sid) && s.parents.some((p) => out.has(p))) { out.add(s.sid); grew = true; } }
   return out;
 }
-let INFO = null;
-function agentBadge(run) {
-  const a = run.agent, m = run.meta || {};
-  if (a === "react-slm") return `<span class="b blue nodot" title="A real language model chose every tool call">REAL MODEL · ${esc(m.model)} (${esc((m.provider || "ollama").toUpperCase())})</span>`;
-  if (a === "react-sim") return `<span class="b ghost nodot" title="Deterministic benchmark policy; same tools and trace format">BENCHMARK POLICY · ${esc(m.policy || "standard")}</span>`;
-  if (a === "external") return `<span class="b blue nodot">EXTERNAL · ${esc(m.source === "otlp" ? "OPENTELEMETRY" : "SDK")}</span>`;
-  if (a === "travel-llm") return m.provider === "anthropic" ? `<span class="b blue nodot">V1 LLM AGENT · ${esc(m.model)}</span>` : `<span class="b root nodot">V1 LLM AGENT · OFFLINE MOCK</span>`;
-  return `<span class="b ghost nodot">V1 FIXED-PLAN AGENT</span>`;
+function diffFields(a, b) {
+  const flat = (o) => (o && o.args && o.tool ? { tool: o.tool, ...o.args } : o || {});
+  const A = flat(a), B = flat(b);
+  return [...new Set([...Object.keys(A), ...Object.keys(B)])].filter((k) => JSON.stringify(A[k]) !== JSON.stringify(B[k])).map((k) => [k, A[k], B[k]]);
 }
 const MAIN = (L) => (L.test.gnn ? "gnn" : "model");
-
-// ------------------------------------------------------------------ workflow signature
-const STAGES = [
-  ["detect", "DETECT", "Flag failed or suspicious executions from the recorded trace.", "#/runs?status=failed"],
-  ["explain", "EXPLAIN", "Rank the likely root-cause step and show the trace evidence behind it.", "#/investigate"],
-  ["replay", "REPLAY", "Restore the checkpoint and re-execute only the steps that depend on it.", "#/repair"],
-  ["repair", "REPAIR", "Re-run the step fresh, or patch its output or arguments, and test the change.", "#/repair"],
-  ["verify", "VERIFY", "Diff original vs repaired execution and confirm the task check now passes.", "#/comparisons"],
-];
-/* state: map stage -> "done" | "now" | undefined */
-function loop(state = {}, big = false) {
-  return `<div class="loop ${big ? "big" : ""}">${STAGES.map(([k, n, d, href]) => `
-    <${big ? `a href="${href}"` : "div"} class="st ${state[k] || ""}">
-      <span class="ic">${icon(state[k] === "done" && !big ? "check" : k)}</span>
-      <span><div class="nm">${n}</div>${big ? `<div class="ds">${d}</div>` : ""}</span>
-      ${big ? `<span class="go">${{ detect: "Failed runs →", explain: "Investigate latest failure →", replay: "Replay workspace →", repair: "Repair workspace →", verify: "Repair verifications →" }[k]}</span>` : ""}
-    </${big ? "a" : "div"}>`).join("")}</div>`;
+function agentName(run) {
+  const m = run.meta || {};
+  if (run.agent === "react-slm") return `${m.model || "model"} · ${(m.provider || "").toUpperCase()}`;
+  if (run.agent === "react-sim") return `Benchmark agent (${m.policy || "standard"})`;
+  if (run.agent === "external") return "External agent (OpenTelemetry)";
+  return "v1 fixed-plan agent";
 }
+let INFO = null, BADGE = 0;
 
-// ------------------------------------------------------------------ router
-const NAV = [
-  ["overview", "#/", "Overview"], ["runs", "#/runs", "Runs"], ["investigate", "#/investigate", "Trace Investigation"],
-  ["repair", "#/repair", "Replay & Repair"], ["compare", "#/comparisons", "Comparisons"], ["sep"],
-  ["eval", "#/eval", "Evaluation"], ["demo", "#/demo", "Live Demo"],
-];
+// ================================================================== shell
+const NAV = [["overview", "#/", "Overview"], ["runs", "#/runs", "Runs"], ["trace", "#/investigate", "Trace Investigation"],
+  ["replay", "#/repair", "Replay & Repair"], ["compare", "#/comparisons", "Comparisons"], ["eval", "#/eval", "Evaluation"],
+  ["demo", "#/demo", "Live Demo"], ["sep"], ["about", "#/about", "How it works"]];
 function renderNav(active) {
-  $("#nav").innerHTML = NAV.map(([k, h, l]) => k === "sep" ? `<div class="sep"></div>`
-    : `<a href="${h}" class="${k === active ? "on" : ""}">${icon({ investigate: "explain", repair: "replay" }[k] || k)}${l}</a>`).join("");
+  $("#nav").innerHTML = NAV.map(([k, h, l]) => (k === "sep" ? `<div class="sep"></div>`
+    : `<a href="${h}" class="${k === active ? "on" : ""}">${icon(k)}${l}${k === "trace" && BADGE ? `<span class="badge">${BADGE} failure${BADGE > 1 ? "s" : ""}</span>` : ""}</a>`)).join("");
 }
+async function refreshShell() {
+  try {
+    INFO = await api("/api/info");
+    const live = INFO.llm.slm_available;
+    $("#rec").innerHTML = `<span class="rec"></span>REC · Recorder online`;
+    $("#model").innerHTML = `<span class="rec ${live ? "green" : "amber"}"></span>${live ? `${esc(INFO.llm.slm)} · ${esc((INFO.llm.slm_provider || "").toUpperCase())}` : "Real model offline · benchmark agent"}`;
+    $("#sidestatus").innerHTML = `<div><b>Recorder</b> · OpenTelemetry</div><div><b>Diagnosis</b> · ${INFO.model_version === "v2" ? "graph neural network" : "v1 model"}</div><div><b>Live agent</b> · ${live ? esc(INFO.llm.slm) : "benchmark policy"}</div>`;
+    const [a, b] = await Promise.all([api("/api/runs?status=failed&split=demo&limit=1"), api("/api/runs?status=failed&split=live&limit=1")]);
+    BADGE = a.total + b.total;
+  } catch (_) { $("#rec").innerHTML = `<span class="rec off"></span>API offline`; }
+}
+
+// ---------------- command palette (real search over recorded runs)
+function openPalette() {
+  if ($(".pal-bg")) return;
+  const bg = document.createElement("div");
+  bg.className = "pal-bg";
+  bg.innerHTML = `<div class="pal"><input placeholder="Search runs by id or task…   (try “Paris”, “failed”, a run id)" autofocus><div class="res"></div>
+    <div class="ft"><span><kbd>↑</kbd><kbd>↓</kbd> navigate</span><span><kbd>↵</kbd> open</span><span><kbd>esc</kbd> close</span><span class="sp"></span><span>pages: overview · runs · demo · eval</span></div></div>`;
+  document.body.appendChild(bg);
+  const inp = $("input", bg), res = $(".res", bg);
+  let items = [], sel = 0, timer;
+  const pages = [["Overview", "#/"], ["Live Demo", "#/demo"], ["Trace Investigation", "#/investigate"], ["Replay & Repair", "#/repair"], ["Comparisons", "#/comparisons"], ["Evaluation", "#/eval"], ["Runs", "#/runs"]];
+  const draw = () => {
+    res.innerHTML = items.map((it, i) => `<div class="it ${i === sel ? "on" : ""}" data-i="${i}">${it.left}<div style="min-width:0"><div class="t1" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${it.title}</div><div class="muted" style="font-size:12px">${it.sub}</div></div><span class="muted mono" style="font-size:11px">${it.right || ""}</span></div>`).join("") || `<div class="empty">No matches</div>`;
+    $$(".it", res).forEach((el) => (el.onclick = () => pick(+el.dataset.i)));
+  };
+  const pick = (i) => { const it = items[i]; if (it) { close(); go(it.href); } };
+  const close = () => bg.remove();
+  const search = async () => {
+    const q = inp.value.trim();
+    const pg = pages.filter(([l]) => !q || l.toLowerCase().includes(q.toLowerCase())).map(([l, h]) => ({ left: icon("arrow"), title: l, sub: "page", href: h }));
+    let runs = [];
+    if (q) {
+      const status = /fail/i.test(q) ? "&status=failed" : /pass|success/i.test(q) ? "&status=passed" : "";
+      const term = q.replace(/fail(ed)?|pass(ed)?|success/ig, "").trim();
+      const d = await api(`/api/runs?limit=8${status}${term ? `&q=${encodeURIComponent(term)}` : ""}`).catch(() => ({ runs: [] }));
+      runs = d.runs.map((r) => ({ left: statusPill(r.success), title: esc(r.question), sub: `${rid(r.run_id)} · ${esc(r.split)} · ${r.n_steps} steps`, right: ago(r.created), href: `#/investigate/${r.run_id}` }));
+    }
+    items = [...runs, ...pg]; sel = 0; draw();
+  };
+  inp.oninput = () => { clearTimeout(timer); timer = setTimeout(search, 160); };
+  inp.onkeydown = (e) => {
+    if (e.key === "ArrowDown") { sel = Math.min(items.length - 1, sel + 1); draw(); e.preventDefault(); }
+    else if (e.key === "ArrowUp") { sel = Math.max(0, sel - 1); draw(); e.preventDefault(); }
+    else if (e.key === "Enter") pick(sel);
+    else if (e.key === "Escape") close();
+  };
+  bg.onclick = (e) => { if (e.target === bg) close(); };
+  search(); inp.focus();
+}
+document.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); openPalette(); }
+  else if (e.key === "/" && !/input|textarea|select/i.test(document.activeElement.tagName)) { e.preventDefault(); openPalette(); }
+});
+
+// ================================================================== router
+let KEYHANDLER = null;
 const routes = [
   [/^\/?$/, "overview", overview], [/^\/runs$/, "runs", runsView],
-  [/^\/investigate$/, "investigate", investigateLatest], [/^\/(?:investigate|run)\/([\w-]+)$/, "investigate", investigate],
-  [/^\/repair$/, "repair", repairPicker], [/^\/(?:repair|replay)\/([\w-]+)$/, "repair", repairView],
+  [/^\/investigate$/, "trace", investigateLatest], [/^\/(?:investigate|run)\/([\w-]+)$/, "trace", investigate],
+  [/^\/repair$/, "replay", repairPicker], [/^\/(?:repair|replay)\/([\w-]+)$/, "replay", repairView],
   [/^\/comparisons$/, "compare", comparisons], [/^\/compare\/([\w-]+)\/([\w-]+)$/, "compare", compareView],
-  [/^\/eval$/, "eval", evalView], [/^\/demo$/, "demo", demoView], [/^\/about$/, "overview", aboutView],
+  [/^\/eval$/, "eval", evalView], [/^\/demo$/, "demo", demoView], [/^\/about$/, "about", aboutView],
 ];
 async function router() {
   const h = location.hash.slice(1) || "/";
   const [path, qs] = h.split("?");
   const q = Object.fromEntries(new URLSearchParams(qs || ""));
+  if (KEYHANDLER) { document.removeEventListener("keydown", KEYHANDLER); KEYHANDLER = null; }
   for (const [re, nav, fn] of routes) {
     const m = path.match(re);
     if (!m) continue;
@@ -129,561 +184,535 @@ async function router() {
   renderNav(""); view().innerHTML = empty("NOT FOUND", "No such page.");
 }
 window.addEventListener("hashchange", router);
+$("#search").onclick = openPalette;
 
-// ------------------------------------------------------------------ graph (layered DAG)
-const GSTYLE = {
-  ok: ["#161b22", "#30363d", "#10b981"], warn: ["#161b22", "#6b4a12", "#fbbf24"], root: ["#2a1f0b", "#f59e0b", "#f59e0b"],
-  hit: ["#1c1214", "#7f2a2f", "#ef4444"], reused: ["#12151b", "#30363d", "#64748b"], rerun: ["#0f1a2e", "#3b82f6", "#60a5fa"],
-};
+// ================================================================== OVERVIEW
+async function overview() {
+  const [s, m] = await Promise.all([api("/api/stats"), api("/api/metrics").catch(() => null)]);
+  const L = m?.localization, K = L ? MAIN(L) : null, cf = m?.counterfactual || {};
+  const reusedPct = cf.reexec_ratio != null ? 1 - cf.reexec_ratio : null;
+  view().innerHTML = `
+    <section class="hero">
+      <div class="tag"><span class="cap">Flight recorder</span>/ ${INFO?.llm?.slm_available ? `live agent: ${esc(INFO.llm.slm)}` : "live agent: benchmark policy"}</div>
+      <h1>BLACK BOX — AI Agent Flight Recorder</h1>
+      <div class="tl">“From Failure to Fix — Without Starting Over.”</div>
+      <p>Understand where your AI agents fail, why they fail, and repair them without re-running the entire execution. Every step is an OpenTelemetry span; a graph neural network localizes the root cause; replay resumes from the failing checkpoint.</p>
+      <div class="ctas"><a class="btn primary lg" href="#/investigate">${icon("search")}Investigate Runs</a><a class="btn lg" href="#/demo">${icon("demo")}Run Live Demo</a></div>
+      <div class="hstats">
+        <a href="#/runs"><div class="cap">Executions recorded</div><div class="v">${num(s.runs)}</div></a>
+        <a href="#/runs?status=failed"><div class="cap">Failures detected</div><div class="v red">${num(s.failures_detected)}</div></a>
+        <a href="#/investigate" title="Failed runs whose top-ranked step scores ≥ ${s.identified_threshold}"><div class="cap">Root causes identified</div><div class="v ind">${num(s.root_causes_identified)}</div></a>
+        <a href="#/comparisons"><div class="cap">Repairs verified</div><div class="v green">${num(s.repairs_verified)}<span class="muted" style="font-size:13px;font-weight:500"> · ${num(s.replay_attempts)} replays</span></div></a>
+      </div>
+      <div class="loopline">${["Detect", "Explain", "Replay", "Repair", "Verify"].map((x, i) => `<a href="${["#/runs?status=failed", "#/investigate", "#/repair", "#/repair", "#/comparisons"][i]}">${x.toUpperCase()}</a>${i < 4 ? `<span class="ar">→</span>` : ""}`).join("")}</div>
+    </section>
+
+    <div class="sec"><span class="dotred"></span><h2>Recent failures</h2><span class="count">${num(s.failures_detected)} total</span><span class="sp"></span><a class="btn sm" href="#/runs?status=failed">View all</a></div>
+    <div class="card"><div class="wrap"><table>
+      <thead><tr><th>Status</th><th>Run ID</th><th>Task</th><th>Diagnosed root cause</th><th class="num">Duration</th><th>Recorded</th><th class="num"></th></tr></thead>
+      <tbody>${s.recent_failed.map((r, i) => `<tr class="click" data-go="#/investigate/${r.run_id}">
+        <td>${statusPill(false)}</td><td><span class="idlink">${rid(r.run_id)}</span></td>
+        <td><div class="trunc t1" style="max-width:340px" title="${esc(r.question)}">${esc(r.question)}</div><div class="muted" style="font-size:11.5px">${r.agent === "react-slm" ? "real model" : r.agent === "react-sim" ? "benchmark agent" : esc(r.agent)} · ${esc(r.split)}</div></td>
+        <td><span class="rc"><span class="stepn">${esc(r.root_sid.split(".")[0])}</span><span class="why">${esc(stepName({ name: r.root_name, kind: "" }))}</span><span class="muted mono" style="font-size:11.5px">${pct(r.root_score)}</span></span></td>
+        <td class="num muted">${ms(r.duration_ms)}</td><td class="muted">${ago(r.created)}</td>
+        <td class="num"><span class="btn sm ${i === 0 ? "primary" : ""}">Investigate ${icon("arrow")}</span></td></tr>`).join("") || `<tr><td colspan="7">${empty("NO FAILED RUNS", "Your agent executions are healthy.", `<a class="btn primary" href="#/demo">Run Live Demo</a>`)}</td></tr>`}</tbody></table></div></div>
+
+    ${m ? `<div class="sec"><span style="color:var(--indigo-3)">${icon("eval")}</span><h2>Diagnosis & replay effectiveness</h2><span class="sp"></span><span class="muted" style="font-size:13px">benchmark: ${num(m.corpus.runs)} runs, evaluated on held-out runs</span></div>
+    <div class="grid g2">
+      <div class="card"><div class="bd">
+        <div class="cap">Graph neural network</div><h2 style="margin-top:4px">Root-cause localization accuracy</h2>
+        <div class="row mt2" style="gap:34px">
+          <div><div class="big">${pct(L.test[K].top1, 1)}</div><div class="muted">Top-1 · seen faults</div></div>
+          <div><div class="big">${pct(L.test[K].top3, 1)}</div><div class="muted">Top-3 · seen faults</div></div>
+          <div><div class="big">${pct(L.heldout[K].top1, 1)}</div><div class="muted">Top-1 · unseen fault types</div></div>
+        </div>
+        <div class="row mt2"><span class="muted" style="font-size:13px">Top-1 by scenario</span><span class="sp"></span><a class="muted" href="#/eval" style="font-size:12.5px">details →</a></div>
+        <div class="bars mt">${[["test", "seen"], ["heldout", "unseen types"], ["drift_loc", "source moved"], ["drift_topo", "new behaviour"]].filter(([k]) => L[k]).map(([k, l]) => `<div class="b" title="${l}: ${pct(L[k][K].top1, 1)} top-1, n=${L[k][K].n}"><b>${pct(L[k][K].top1)}</b><i style="height:${Math.max(6, L[k][K].top1 * 100)}%"></i><span>${l}</span></div>`).join("")}</div>
+      </div></div>
+      <div class="card"><div class="bd">
+        <div class="cap">Checkpoint replay</div><h2 style="margin-top:4px">Repair without starting over</h2>
+        <div class="row mt2" style="gap:34px">
+          <div><div class="big">${pct(reusedPct, 1)}</div><div class="muted">Avg steps reused</div></div>
+          <div><div class="big">${pct(cf.confirm_top1, 1)}</div><div class="muted">Fixed by repairing #1 suspect</div></div>
+          <div><div class="big">${pct(cf.fixed_within_3, 1)}</div><div class="muted">Fixed within 3 replays</div></div>
+        </div>
+        <div class="row mt2"><span class="muted" style="font-size:13px">Steps per verified repair (avg ${cf.avg_steps?.toFixed(1)})</span><span class="sp"></span><span class="ind mono" style="font-size:12.5px">reused ${cf.avg_reused?.toFixed(1) ?? "—"} · re-executed ${cf.avg_reexec?.toFixed(1)}</span></div>
+        <div class="ratio mt"><div class="ru" style="width:${(reusedPct || 0) * 100}%">REUSED FROM RECORDING (${pct(reusedPct)})</div><div class="rx" style="width:${(1 - (reusedPct || 0)) * 100}%">RE-EXECUTED (${pct(cf.reexec_ratio)})</div></div>
+        <div class="row mt2" style="font-size:13px"><span class="muted">This deployment</span><span class="sp"></span><span class="t1 mono">${num(s.replay_attempts)} replays · ${num(s.repairs_verified)} verified · ${num(s.steps_avoided)} steps avoided</span></div>
+      </div></div>
+    </div>` : ""}`;
+  $$("[data-go]").forEach((el) => (el.onclick = () => go(el.dataset.go)));
+}
+
+// ================================================================== RUNS
+async function runsView(q) {
+  const p = new URLSearchParams({ limit: 40, offset: q.offset || 0 });
+  ["status", "split", "agent", "q"].forEach((k) => q[k] && p.set(k, q[k]));
+  const d = await api(`/api/runs?${p}`); const off = +(q.offset || 0);
+  const seg = (k, opts) => `<div class="seg">${opts.map(([v, l]) => `<button data-k="${k}" data-v="${v}" class="${(q[k] || "") === v ? "on" : ""}">${l}</button>`).join("")}</div>`;
+  view().innerHTML = `
+    <div class="row mb"><div><h1>Runs</h1><div class="sub" style="margin:4px 0 0">Every recorded execution. Failed runs carry Black Box's diagnosed root cause.</div></div></div>
+    <div class="row mb">${seg("status", [["", "All"], ["failed", "Failed"], ["passed", "Passed"]])}
+      ${seg("split", [["", "All sources"], ["demo", "Demo"], ["live", "Live"], ["test", "Benchmark"], ["heldout", "Unseen faults"], ["drift_topo", "New behaviour"]])}
+      <input id="q" placeholder="Filter by task or id…" value="${esc(q.q || "")}" style="min-width:220px"><span class="sp"></span><span class="muted mono">${num(d.total)} runs</span></div>
+    <div class="card"><div class="wrap"><table>
+      <thead><tr><th>Status</th><th>Run ID</th><th>Task</th><th>Agent</th><th class="num">Steps</th><th class="num">Duration</th><th>Diagnosed root cause</th><th>Recorded</th></tr></thead>
+      <tbody>${d.runs.map((r) => `<tr class="click" data-go="#/investigate/${r.run_id}">
+        <td>${statusPill(r.success)}</td><td><span class="idlink">${rid(r.run_id)}</span></td><td><div class="trunc t1">${esc(r.question)}</div></td>
+        <td class="muted" style="font-size:12.5px">${esc(r.agent)}</td><td class="num">${r.n_steps}</td><td class="num muted">${ms(r.duration_ms)}</td>
+        <td>${r.root ? `<span class="rc"><span class="stepn">${esc(r.root.sid.split(".")[0])}</span><span class="why">${esc(stepName({ name: r.root.name, kind: "" }))}</span><span class="muted mono" style="font-size:11px">${pct(r.root.score)}</span></span>` : `<span class="dim">—</span>`}</td>
+        <td class="muted">${ago(r.created)}</td></tr>`).join("") || `<tr><td colspan="8">${empty("NO RUNS", "Nothing matches these filters.")}</td></tr>`}</tbody></table></div></div>
+    <div class="row mt"><span class="sp"></span><button class="btn sm" id="prev" ${off <= 0 ? "disabled" : ""}>← Prev</button><span class="muted mono">${d.total ? off + 1 : 0}–${Math.min(off + 40, d.total)}</span><button class="btn sm" id="next" ${off + 40 >= d.total ? "disabled" : ""}>Next →</button></div>`;
+  const nav = (o) => { const n = { ...q, offset: o }; Object.keys(n).forEach((k) => !n[k] && delete n[k]); go(`/runs?${new URLSearchParams(n)}`); };
+  $$("[data-k]").forEach((b) => (b.onclick = () => { q[b.dataset.k] = b.dataset.v; nav(0); }));
+  let t; $("#q").oninput = (e) => { clearTimeout(t); t = setTimeout(() => { q.q = e.target.value; nav(0); }, 350); };
+  $$("[data-go]").forEach((el) => (el.onclick = () => go(el.dataset.go)));
+  $("#prev").onclick = () => nav(Math.max(0, off - 40)); $("#next").onclick = () => nav(off + 40);
+}
+
+// ================================================================== TRACE INVESTIGATION
+async function investigateLatest() {
+  const d = await api("/api/runs?status=failed&limit=1");
+  if (!d.runs.length) { view().innerHTML = empty("NO FAILED RUNS", "Your agent executions are healthy.", `<a class="btn primary" href="#/demo">Run Live Demo</a>`); return; }
+  location.replace(`#/investigate/${d.runs[0].run_id}`);
+}
+
 function graphSvg(steps, statusOf, { selected, onClick } = {}) {
   const depth = {}, cols = {};
   steps.forEach((s) => { depth[s.sid] = 1 + Math.max(-1, ...s.parents.filter((p) => p in depth).map((p) => depth[p])); (cols[depth[s.sid]] ||= []).push(s); });
-  const W = 140, H = 30, GX = 46, GY = 9, P = 14;
+  const W = 150, H = 32, GX = 44, GY = 10, P = 16;
   const nC = Object.keys(cols).length, maxR = Math.max(...Object.values(cols).map((c) => c.length));
   const pos = {};
   Object.entries(cols).forEach(([d, list]) => list.forEach((s, j) => { pos[s.sid] = { x: P + d * (W + GX), y: P + (maxR - list.length) * (H + GY) / 2 + j * (H + GY) }; }));
   const w = P * 2 + nC * (W + GX) - GX, h = P * 2 + maxR * (H + GY) - GY;
+  const col = { ok: ["#131a23", "#2f3846", "#10b981"], warn: ["#1f1a0e", "#7a5a12", "#f59e0b"], root: ["#3a0f13", "#e5484d", "#ef4444"], hit: ["#211316", "#7f2a2f", "#f4a3a6"], reused: ["#121823", "#2f3846", "#5d6a80"], rerun: ["#17163a", "#7c76ff", "#c3c0ff"], input: ["#131a23", "#2f3846", "#8a93a3"] };
   const edges = steps.flatMap((s) => s.parents.filter((p) => pos[p]).map((p) => {
     const a = pos[p], b = pos[s.sid], x1 = a.x + W, y1 = a.y + H / 2, x2 = b.x, y2 = b.y + H / 2, mx = (x1 + x2) / 2;
     const hot = ["root", "hit"].includes(statusOf(p)) && statusOf(s.sid) === "hit";
-    const re = statusOf(p) === "rerun" && statusOf(s.sid) === "rerun";
-    return `<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" fill="none" stroke="${hot ? "#ef4444" : re ? "#3b82f6" : "#30363d"}" stroke-width="${hot || re ? 1.5 : 1}" ${hot ? 'stroke-dasharray="4 3"' : ""}/>`;
+    return `<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" fill="none" stroke="${hot ? "#e5484d" : "#2f3846"}" stroke-width="${hot ? 1.6 : 1}" ${hot ? 'stroke-dasharray="4 3"' : ""}/>`;
   })).join("");
   const nodes = steps.map((s) => {
-    const k = statusOf(s.sid), [f, b, d] = GSTYLE[k] || GSTYLE.ok, p = pos[s.sid], sel = s.sid === selected;
-    return `<g class="node" data-sid="${esc(s.sid)}"><rect x="${p.x}" y="${p.y}" width="${W}" height="${H}" rx="4" fill="${f}" stroke="${sel ? "#3b82f6" : b}" stroke-width="${sel || k === "root" ? 1.6 : 1}"/>
-      <circle cx="${p.x + 11}" cy="${p.y + H / 2}" r="3.5" fill="${d}"/>
-      <text x="${p.x + 21}" y="${p.y + 19}">${esc(s.sid.length > 17 ? s.sid.slice(0, 16) + "…" : s.sid)}</text>
-      <title>${esc(s.sid)} · ${esc(s.name)}\n${esc(summarize(s.output))}</title></g>`;
+    const k = statusOf(s.sid), [f, b, d] = col[k] || col.ok, p = pos[s.sid], sel = s.sid === selected;
+    const lab = stepName(s);
+    return `<g class="node" data-sid="${esc(s.sid)}"><rect x="${p.x}" y="${p.y}" width="${W}" height="${H}" rx="6" fill="${f}" stroke="${sel ? "#7c76ff" : b}" stroke-width="${sel || k === "root" ? 1.8 : 1}"/><circle cx="${p.x + 12}" cy="${p.y + H / 2}" r="3.5" fill="${d}"/><text x="${p.x + 23}" y="${p.y + 20}">${esc(lab.length > 19 ? lab.slice(0, 18) + "…" : lab)}</text><title>${esc(s.sid)}\n${esc(summarize(s.output))}</title></g>`;
   }).join("");
-  return { html: `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${edges}${nodes}</svg>`,
-    bind: (root) => onClick && $$(".node", root).forEach((g) => (g.onclick = () => onClick(g.dataset.sid))) };
-}
-
-// ------------------------------------------------------------------ evidence block (shared)
-function evidenceHtml(rc) {
-  if (!rc) return "";
-  return rc.evidence.map((e) => {
-    const ctx = ["upstream_clean", "downstream_impact"].includes(e.signal);
-    return `<div class="ev"><div class="h ${ctx ? "ctx" : ""}"><span>${esc(e.label)}</span>${ctx ? "" : `<span class="dim">signal</span>`}</div>
-      <div class="x">${esc(e.text)}</div>
-      ${e.expected || e.observed ? `<div class="eo">${e.expected ? `<span class="k">EXPECTED</span><span class="exp">${esc(e.expected)}</span>` : ""}${e.observed ? `<span class="k">OBSERVED</span><span class="obs">${esc(e.observed)}</span>` : ""}</div>` : ""}</div>`;
-  }).join("");
-}
-const confLine = (score) => `<div class="row" style="align-items:flex-end;gap:12px"><span class="conf">${pct(score, 1)}</span><span class="muted" style="padding-bottom:6px">confidence<br><span class="dim" style="font-size:11px">step-ranking model score</span></span></div><div class="bar mt"><i style="width:${score * 100}%"></i></div>`;
-
-// ------------------------------------------------------------------ OVERVIEW
-async function overview() {
-  const [s, m] = await Promise.all([api("/api/stats"), api("/api/metrics").catch(() => null)]);
-  view().innerHTML = `
-    <div class="hero">
-      <div>
-        <div class="cap" style="color:var(--blue-2)">AI AGENT FLIGHT RECORDER</div>
-        <h1 class="mt">BLACK BOX</h1>
-        <div class="tl">From Failure to Fix — Without Starting Over.</div>
-        <p>Trace every agent execution, identify likely root causes, replay from the failure checkpoint, test repairs, and verify the result.</p>
-        <div class="row">
-          <a class="btn primary lg" href="#/investigate">${icon("explain")}Investigate a Failure</a>
-          <a class="btn lg" href="#/demo">${icon("demo")}Run Demo</a>
-        </div>
-      </div>
-      <div>
-        <div class="cap mb">WHAT CHANGES</div>
-        <div class="vs">
-          <div class="col"><div class="cap">TRADITIONAL OBSERVABILITY</div><ol>
-            <li>Agent fails</li><li>Read logs</li><li>Investigate manually</li><li>Restart the agent</li><li>Try again</li></ol></div>
-          <div class="col bb"><div class="cap" style="color:var(--blue-2)">BLACK BOX</div><ol>
-            <li>Agent fails</li><li><b>DETECT</b>&nbsp;failure</li><li><b>EXPLAIN</b>&nbsp;likely root cause</li><li><b>REPLAY</b>&nbsp;from checkpoint</li><li><b>REPAIR</b>&nbsp;the step</li><li><b>VERIFY</b>&nbsp;original vs repaired</li></ol></div>
-        </div>
-        <div class="muted mt" style="font-size:12px">Observability tells you what happened. Black Box is designed to turn it into an actionable debugging workflow: where it likely went wrong, and a tested repair without re-running everything.</div>
-      </div>
-    </div>
-    ${loop({}, true)}
-    <div class="metrics mt">
-      <div class="metric"><div class="cap">EXECUTIONS</div><div class="v">${num(s.runs)}</div><div class="s">recorded runs</div></div>
-      <div class="metric"><div class="cap">FAILURES DETECTED</div><div class="v red">${num(s.failures_detected)}</div><div class="s">${pct(s.failure_rate, 1)} of runs failed the task check</div></div>
-      <div class="metric"><div class="cap">ROOT CAUSES IDENTIFIED</div><div class="v amber">${num(s.root_causes_identified)}</div><div class="s" title="Failed runs whose top-ranked step scores at least ${s.identified_threshold}">top step ≥ ${s.identified_threshold} · ${num(s.failures_analyzed)} analyzed</div></div>
-      <div class="metric"><div class="cap">REPLAY ATTEMPTS</div><div class="v blue">${num(s.replay_attempts)}</div><div class="s">checkpoint replays run</div></div>
-      <div class="metric"><div class="cap">REPAIRS VERIFIED</div><div class="v green">${num(s.repairs_verified)}</div><div class="s">failed → success after replay</div></div>
-      <div class="metric"><div class="cap">STEPS AVOIDED</div><div class="v">${num(s.steps_avoided)}</div><div class="s">${s.replay_steps_total ? `${pct(s.steps_avoided / s.replay_steps_total)} of replayed steps reused` : "reused instead of re-run"}</div></div>
-    </div>
-    <div class="grid mt" style="grid-template-columns: minmax(0,1.5fr) minmax(0,1fr)">
-      <div class="panel"><div class="hd"><h2>Recent failures</h2><a class="btn sm" href="#/runs?status=failed">All failed runs</a></div>
-        ${s.recent_failed.length ? `<div class="tablewrap"><table><thead><tr><th>Run</th><th>Task</th><th>Likely root cause</th><th class="num">Conf.</th><th></th></tr></thead><tbody>
-        ${s.recent_failed.map((r) => `<tr class="click" data-go="#/investigate/${r.run_id}"><td class="mono t1">${short(r.run_id)}<div class="dim" style="font-size:11px">${esc(r.split)} · ${ago(r.created)}</div></td>
-          <td><div class="trunc" style="max-width:260px">${esc(r.question)}</div></td>
-          <td><span class="b root nodot">${esc(r.root_sid)}</span> <span class="muted mono" style="font-size:11px">${esc(r.root_name)}</span></td>
-          <td class="num">${pct(r.root_score)}</td><td class="num"><span class="btn sm">Investigate</span></td></tr>`).join("")}</tbody></table></div>`
-        : empty("NO FAILED RUNS", "Your agent executions are healthy.", `<a class="btn primary" href="#/demo">Run Demo</a>`)}
-      </div>
-      <div class="panel"><div class="hd"><h2>Recent repair verifications</h2><a class="btn sm" href="#/comparisons">All</a></div>
-        ${s.recent_replays.length ? `<table><tbody>${s.recent_replays.map((r) => `<tr class="click" data-go="#/compare/${r.parent_run_id}/${r.run_id}">
-          <td class="mono t1">${short(r.parent_run_id)}</td><td class="mono muted">${esc(r.fork_sid)}</td>
-          <td>${r.parent_success === 0 && r.success ? `<span class="b ok">VERIFIED</span>` : r.success ? `<span class="b ok">SUCCESS</span>` : `<span class="b fail">STILL FAILS</span>`}</td>
-          <td class="num muted">${r.n_reexecuted}/${r.n_steps} re-run</td></tr>`).join("")}</tbody></table>`
-        : empty("NO REPLAY YET", "Select a suspicious step to replay from its checkpoint.", `<a class="btn" href="#/investigate">Investigate Trace</a>`)}
-        ${m ? `<div class="bd" style="border-top:1px solid var(--border)"><div class="cap mb">BENCHMARK · HELD-OUT RUNS</div>
-          ${[["test", "Top-1, seen failure types"], ["heldout", "Top-1, unseen failure types"], ["drift_loc", "Top-1, error source moved"], ["drift_topo", "Top-1, new agent behaviour"]].filter(([k]) => m.localization[k]).map(([k, l]) => `<div class="hbar"><span>${l}</span><div class="bar blue"><i style="width:${m.localization[k][MAIN(m.localization)].top1 * 100}%"></i></div><b>${pct(m.localization[k][MAIN(m.localization)].top1, 1)}</b></div>`).join("")}
-          <div class="hbar"><span>Fixed & verified ≤ 3 replays</span><div class="bar green"><i style="width:${(m.counterfactual?.fixed_within_3 || 0) * 100}%"></i></div><b>${pct(m.counterfactual?.fixed_within_3, 1)}</b></div>
-          <a class="btn sm mt" href="#/eval">Evaluation details</a></div>` : ""}
-      </div>
-    </div>`;
-  $$("[data-go]").forEach((el) => (el.onclick = () => go(el.dataset.go)));
-}
-
-// ------------------------------------------------------------------ RUNS
-async function runsView(q) {
-  const p = new URLSearchParams({ limit: 50, offset: q.offset || 0 });
-  ["status", "split", "agent", "q"].forEach((k) => q[k] && p.set(k, q[k]));
-  const d = await api(`/api/runs?${p}`); const off = +(q.offset || 0);
-  const sel = (n, opts) => `<select data-f="${n}">${opts.map(([v, l]) => `<option value="${v}" ${q[n] === v ? "selected" : ""}>${l}</option>`).join("")}</select>`;
-  view().innerHTML = `
-    <div class="row mb"><div><h1>Runs</h1><div class="sub" style="margin-bottom:0">Every recorded execution. Failed runs carry Black Box's likely root cause.</div></div></div>
-    <div class="row mb">
-      ${sel("status", [["", "All statuses"], ["failed", "Failed"], ["passed", "Passed"]])}
-      ${sel("split", [["", "All sources"], ["demo", "Live demo"], ["live", "Live runs"], ["train", "Benchmark · train"], ["test", "Benchmark · test (seen faults)"], ["heldout", "Benchmark · held-out (unseen faults)"]])}
-      ${sel("agent", [["", "All agents"], ["travel-llm", "LLM agent"], ["travel-sim", "Simulated agent"]])}
-      <input data-f="q" placeholder="run id or task…" value="${esc(q.q || "")}" style="min-width:220px"><span class="sp"></span><span class="muted mono">${num(d.total)} runs</span></div>
-    <div class="panel">${d.runs.length ? `<div class="tablewrap"><table>
-      <thead><tr><th>Run</th><th>Status</th><th>Task</th><th>Agent</th><th>Source</th><th class="num">Steps</th><th class="num">Duration</th><th>Likely root cause</th><th>Recorded</th></tr></thead>
-      <tbody>${d.runs.map((r) => `<tr class="click" data-go="#/investigate/${r.run_id}">
-        <td class="mono t1">${short(r.run_id)}</td><td>${st(r.success)}</td><td><div class="trunc">${esc(r.question)}</div></td>
-        <td>${r.agent === "travel-llm" ? `<span class="kind llm">LLM</span>` : `<span class="kind">SIM</span>`}</td><td class="muted mono" style="font-size:11px">${esc(r.split)}</td>
-        <td class="num">${r.n_steps}</td><td class="num">${ms(r.duration_ms)}</td>
-        <td>${r.root ? `<span class="b root nodot">${esc(r.root.sid)}</span> <span class="mono muted" style="font-size:11px">${pct(r.root.score)}</span>` : `<span class="dim">—</span>`}</td>
-        <td class="muted">${ago(r.created)}</td></tr>`).join("")}</tbody></table></div>`
-      : empty(q.status === "failed" ? "NO FAILED RUNS" : "NO RUNS", q.status === "failed" ? "Your agent executions are healthy." : "Nothing matches these filters.", `<a class="btn primary" href="#/demo">Run Demo</a>`)}</div>
-    <div class="row mt"><span class="sp"></span><button class="btn sm" id="prev" ${off <= 0 ? "disabled" : ""}>← Prev</button>
-      <span class="muted mono">${d.total ? off + 1 : 0}–${Math.min(off + 50, d.total)}</span><button class="btn sm" id="next" ${off + 50 >= d.total ? "disabled" : ""}>Next →</button></div>`;
-  const nav = (o) => { const n = { ...q, offset: o }; Object.keys(n).forEach((k) => !n[k] && delete n[k]); go(`/runs?${new URLSearchParams(n)}`); };
-  $$("[data-f]").forEach((el) => (el.onchange = () => { q[el.dataset.f] = el.value; nav(0); }));
-  $$("[data-go]").forEach((el) => (el.onclick = () => go(el.dataset.go)));
-  $("#prev").onclick = () => nav(Math.max(0, off - 50)); $("#next").onclick = () => nav(off + 50);
-}
-
-// ------------------------------------------------------------------ TRACE INVESTIGATION
-async function investigateLatest() {
-  const d = await api("/api/runs?status=failed&limit=1");
-  if (!d.runs.length) { view().innerHTML = empty("NO FAILED RUNS", "Your agent executions are healthy.", `<a class="btn primary" href="#/demo">Run Demo</a>`); return; }
-  location.replace(`#/investigate/${d.runs[0].run_id}`);
+  return { html: `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${edges}${nodes}</svg>`, bind: (root) => onClick && $$(".node", root).forEach((g) => (g.onclick = () => onClick(g.dataset.sid))) };
 }
 
 async function investigate(id, q) {
-  const [run, dx] = await Promise.all([api(`/api/runs/${id}`), api(`/api/runs/${id}/diagnosis`)]);
-  const failed = !run.success, isFork = !!run.parent_run_id, rc = failed ? dx.root_cause : null;
+  const [run, dx, forks] = await Promise.all([api(`/api/runs/${id}`), api(`/api/runs/${id}/diagnosis`), api(`/api/runs/${id}/forks`).catch(() => ({ runs: [] }))]);
+  const failed = !run.success, isFork = !!run.parent_run_id, rc = failed && !isFork ? dx.root_cause : null;
   const by = Object.fromEntries(dx.steps.map((s) => [s.sid, s]));
-  const impacted = new Set(failed ? dx.impacted : []);
+  const impacted = new Set(rc ? dx.impacted : []);
   const status = (sid) => {
-    if (isFork) return run.steps.find((s) => s.sid === sid)?.reused ? "reused" : "rerun";
-    if (rc && sid === rc.sid) return "root"; if (impacted.has(sid)) return "hit";
+    const s = run.steps.find((x) => x.sid === sid);
+    if (isFork) return s?.reused ? "reused" : "rerun";
+    if (s?.kind === "input") return "input";
+    if (rc && sid === rc.sid) return "root";
+    if (impacted.has(sid)) return "hit";
     return by[sid]?.suspicious ? "warn" : "ok";
   };
-  const LBL = { ok: ["ok", "OK"], warn: ["root", "ANOMALY"], root: ["root", "ROOT CAUSE"], hit: ["fail", "IMPACTED"], reused: ["slate", "REUSED"], rerun: ["blue", "RE-EXECUTED"] };
-  let sel = q.step || rc?.sid || run.steps[0].sid, tab = "signals";
+  const BADGES = { ok: `<span class="st ok">✓ Success</span>`, warn: `<span class="st warn">Anomaly</span>`, hit: `<span class="st hit">Impacted</span>`, reused: `<span class="st reused">↩ Reused</span>`, rerun: `<span class="st rerun">↻ Re-executed</span>`, input: `<span class="st ghost">Input</span>` };
   const rcStep = rc && run.steps.find((s) => s.sid === rc.sid);
+  const rcIdx = rcStep ? rcStep.idx : -1;
+  const plan = rc ? descendants(run.steps, rc.sid) : new Set();
+  let sel = q.step || rc?.sid || run.steps[run.steps.length - 1].sid, tab = "rca", filter = "all";
+  const open = new Set(rc ? [rc.sid] : []);
+  const total = run.steps.reduce((a, s) => a + s.latency_ms, 0) || 1;
+  const localEv = rc ? rc.evidence.filter((e) => !["upstream_clean", "downstream_impact"].includes(e.signal)) : [];
+  const deltaEv = localEv.find((e) => e.expected || e.observed);
+  const latestFork = forks.runs[0];
   const repairHref = (sid, mode = "repair") => `#/repair/${run.run_id}?sid=${encodeURIComponent(sid)}&mode=${mode}`;
 
   view().innerHTML = `
-    <div class="crumbs"><a href="#/runs">Runs</a><span>/</span><span class="t1">${short(run.run_id)}</span>${st(run.success)}
-      ${agentBadge(run)}
-      <span class="b ghost nodot">${esc(run.split)}</span><span class="sp"></span>
-      ${rc && run.replayable ? `<a class="btn amber" href="${repairHref(rc.sid)}">${icon("replay")}Replay From Step ${String(rcStep.idx + 1).padStart(2, "0")} (Root Cause)</a>` : ""}
+    <div class="runbar">
+      <span class="rid">RUN ${rid(run.run_id)}<button title="Copy run id" id="cp">${icon("copy")}</button></span>
+      ${isFork ? `<span class="st rep">Replay</span>` : statusPill(run.success)}
+      <span class="kv">AGENT: <b>${esc(agentName(run))}</b></span><span class="kv">DUR: <b>${ms(run.duration_ms)}</b></span>
+      <span class="kv">STEPS: <b>${run.n_steps}</b></span><span class="kv">RECORDED: <b>${ago(run.created)}</b></span><span class="kv muted">${esc(run.split)}</span>
     </div>
-    ${isFork ? `<div class="banner blue"><span class="big">REPLAY RUN</span><span>Forked from <a class="mono t1" href="#/investigate/${run.parent_run_id}"><u>${short(run.parent_run_id)}</u></a> at <b class="mono">${esc(run.fork_sid)}</b> (${esc(run.fork_mode)}) · ${run.n_reexecuted}/${run.n_steps} steps re-executed</span><span class="sp"></span><a class="btn sm" href="#/compare/${run.parent_run_id}/${run.run_id}">Original vs repaired →</a></div>`
-      : failed ? `<div class="banner"><span class="big">BLACK BOX FOUND A LIKELY ROOT CAUSE</span><span class="t1">Step ${String(rcStep.idx + 1).padStart(2, "0")} · <span class="mono">${esc(rc.sid)}</span> · ${pct(rc.score, 1)} confidence</span><span class="muted">· ${impacted.size} downstream step(s) affected</span></div>`
-      : `<div class="banner ok"><span class="big">NO FAILURE DETECTED</span><span>This run passed the task check. Black Box still scores every step.</span></div>`}
-    ${failed && !isFork ? `<div class="mb">${loop({ detect: "done", explain: "done", replay: "now" })}</div>` : ""}
-    <div class="taskbar">
-      <div><div class="cap">TASK OBJECTIVE</div><div class="mt t1" style="font-size:13.5px;line-height:19px">${esc(run.question)}</div>
-        <div class="muted mono mt" style="font-size:11px">${run.n_steps} steps · ${ms(run.duration_ms)} · failure risk ${pct(dx.p_fail)}${run.meta?.model ? ` · model ${esc(run.meta.model)}` : ""}</div></div>
-      <div><div class="cap">AGENT ANSWER</div><div class="val" style="color:${failed ? "var(--red-2)" : "var(--green-2)"}">${money(run.final?.total_usd)}</div>
-        <div class="muted" style="font-size:12px">${run.final?.within_budget == null ? esc(summarize(run.final)) : run.final.within_budget ? "says within budget" : "says over budget"}</div></div>
-      <div><div class="cap">EXPECTED · TASK CHECK</div><div class="val">${money(run.expected?.total_usd)}</div><div class="muted" style="font-size:12px">${run.expected?.within_budget ? "within budget" : "over budget"}</div></div>
+    <div class="row mt">
+      ${rc && run.replayable ? `<a class="btn primary" href="${repairHref(rc.sid)}">${icon("replay")}Replay From Root Cause</a>` : ""}
+      ${isFork ? `<a class="btn primary" href="#/compare/${run.parent_run_id}/${run.run_id}">${icon("compare")}Compare With Original</a>` : latestFork ? `<a class="btn" href="#/compare/${run.run_id}/${latestFork.run_id}">${icon("compare")}Compare Executions</a>` : `<button class="btn" disabled title="Run a replay first">${icon("compare")}Compare Executions</button>`}
+      <span class="sp"></span><span class="muted" style="font-size:12px"><kbd>↑</kbd><kbd>↓</kbd> steps · <kbd>↵</kbd> expand · <kbd>R</kbd> replay</span>
     </div>
-    <div class="three">
-      <div class="panel"><div class="hd"><h2>Execution steps</h2><span class="mono muted" style="font-size:11px">${run.n_steps} · ${failed ? `${impacted.size + 1} affected` : "all ok"}</span></div><ul class="steps" id="steps"></ul></div>
-      <div class="grid" style="gap:12px">
-        <div class="panel"><div class="hd"><h2>Causal execution graph</h2><span class="legend">${isFork ? `<span><i style="background:#3b82f6"></i>re-executed</span><span><i style="background:#64748b"></i>reused</span>` : `<span><i style="background:#f59e0b"></i>root cause</span><span><i style="background:#ef4444"></i>impacted</span><span><i style="background:#10b981"></i>ok</span>`}</span></div><div class="bd"><div class="graph" id="graph"></div></div></div>
-        <div class="panel" id="insp"></div>
-      </div>
-      <div class="rcol">${rc ? `
-        <div class="panel"><div class="hd"><h2>Likely root cause</h2><span class="b root">EXPLAIN</span></div><div class="bd">
-          <div class="row"><span class="mono t1" style="font-size:15px">Step ${String(rcStep.idx + 1).padStart(2, "0")} · ${esc(rc.sid)}</span>${kind(rc.kind)}<span class="muted mono" style="font-size:11px">${esc(rc.name)}</span></div>
-          <div class="mt">${confLine(rc.score)}</div>
-          <div class="cap mt2">EVIDENCE</div>${evidenceHtml(rc)}
-          ${rc.joint_local ? `<div class="dim mt" style="font-size:11px">Local signals account for ${pct(rc.joint_local)} of the score (measured by removing them and re-scoring).</div>` : ""}
-          <div class="grid g2 mt2">
-            <div><div class="cap">UPSTREAM STATE</div><div class="mt">${dx.upstream.healthy ? `<span class="b ok">HEALTHY</span> <span class="muted" style="font-size:12px">${dx.upstream.steps.length} step(s)</span>` : `<span class="b fail">${dx.upstream.anomalous.length} ANOMALOUS</span>`}</div></div>
-            <div><div class="cap">DOWNSTREAM EFFECT</div><div class="mt"><span class="b fail">${impacted.size} AFFECTED</span></div></div>
-          </div>
-          <div class="chips mt">${dx.impacted.map((s) => `<span class="chip ${dx.impacted_anomalous.includes(s) ? "hot" : ""}" data-pick="${esc(s)}">${esc(s)}</span>`).join("")}</div>
-          ${run.replayable ? `<a class="btn primary mt2" style="width:100%;justify-content:center" href="${repairHref(rc.sid)}">${icon("replay")}Replay From This Step</a>` : `<div class="muted mt2" style="font-size:12px">Recorded via SDK without a replay adapter: diagnosable, not replayable.</div>`}
-          ${dx.suspects.length > 1 ? `<div class="cap mt2">OTHER SUSPECTS</div>${dx.suspects.slice(1).map((x) => `<div class="row mt"><span class="chip" data-pick="${esc(x.sid)}">${esc(x.sid)}</span><div class="bar slate sp"><i style="width:${x.score * 100}%"></i></div><span class="mono muted" style="font-size:11px">${pct(x.score)}</span></div>`).join("")}` : ""}
-          ${run.label ? `<button class="btn sm mt2" id="reveal">Reveal ground-truth label</button><div id="label"></div>` : ""}
-        </div></div>` : `<div class="panel"><div class="hd"><h2>${isFork ? "Replay run" : "Diagnosis"}</h2></div><div class="bd muted">${isFork ? "This execution is a replay. Compare it with the original to verify the repair." : "No failure to explain. Step scores are still shown in the inspector for reference."}
-          ${isFork ? `<div><a class="btn primary mt" href="#/compare/${run.parent_run_id}/${run.run_id}">Original vs repaired</a></div>` : ""}</div></div>`}
-      </div>
+    <div class="kpis mt">
+      <div class="kpi"><div class="cap">Root-cause confidence</div><div class="v" style="color:${rc ? "#ff9b9f" : "var(--green-2)"}">${rc ? pct(rc.score, 1) : isFork ? "replay" : "none"}<small>${rc ? `Step ${nn(rcIdx)}` : failed ? "" : "run passed"}</small></div></div>
+      <div class="kpi"><div class="cap">Failure risk (trace only)</div><div class="v">${pct(dx.p_fail)}</div></div>
+      <div class="kpi"><div class="cap">Blast radius</div><div class="v">${rc ? `${impacted.size} steps` : "—"}<small>${rc ? `${dx.impacted_anomalous.length} anomalous` : ""}</small></div></div>
+      <div class="kpi"><div class="cap">Upstream state</div><div class="v" style="color:${!rc || dx.upstream.healthy ? "var(--green-2)" : "#ff9b9f"}">${!rc ? "—" : dx.upstream.healthy ? "Healthy" : `${dx.upstream.anomalous.length} anomalous`}</div></div>
+      <div class="kpi"><div class="cap">Final answer</div><div class="v" style="color:${failed ? "#ff9b9f" : "var(--green-2)"};font-size:15px">${esc(summarize(run.final))}</div><div class="muted" style="font-size:11.5px">expected ${esc(summarize(run.expected))}</div></div>
+    </div>
+    <div class="split mt">
+      <div class="card"><div class="hd"><div class="row"><span style="color:var(--indigo-3)">${icon("list")}</span><h2>EXECUTION TIMELINE</h2><span class="st ghost">${run.n_steps} spans</span></div>
+        <div class="filters" id="filters"></div></div>
+        <div class="bd"><div class="cap" style="margin-bottom:2px">${esc(run.question)}</div><div class="tlbar" id="tlbar"></div>
+          <div class="tlaxis"><span>T+0ms</span>${rc ? `<span>root cause @ T+${Math.round(run.steps.slice(0, rcIdx).reduce((a, s) => a + s.latency_ms, 0))}ms</span>` : ""}<span>${ms(total)} (end)</span></div>
+          <div class="steps" id="steps"></div></div></div>
+      <div class="card" id="rp"></div>
     </div>`;
 
+  const counts = { all: run.steps.length, anomalies: dx.steps.filter((s) => s.suspicious).length, impacted: impacted.size + (rc ? 1 : 0) };
+  const renderFilters = () => {
+    $("#filters").innerHTML = [["all", `All steps (${counts.all})`], ["anomalies", `Anomalies (${counts.anomalies})`], ...(rc ? [["impacted", `Root + impacted (${counts.impacted})`]] : [])]
+      .map(([k, l]) => `<button data-f="${k}" class="${filter === k ? "on" : ""}">${l}${k === "anomalies" && counts.anomalies ? '<span class="dot"></span>' : ""}</button>`).join("");
+    $$("#filters button").forEach((b) => (b.onclick = () => { filter = b.dataset.f; renderFilters(); renderSteps(); }));
+  };
+  const visible = (s) => filter === "all" || (filter === "anomalies" && by[s.sid]?.suspicious) || (filter === "impacted" && (s.sid === rc?.sid || impacted.has(s.sid)));
+  const renderBar = () => {
+    $("#tlbar").innerHTML = run.steps.map((s) => `<i class="${status(s.sid)}" data-sid="${esc(s.sid)}" style="width:${Math.max(0.6, (s.latency_ms / total) * 100)}%" title="${esc(stepName(s))} · ${ms(s.latency_ms)}"></i>`).join("");
+    $$("#tlbar i").forEach((el) => (el.onclick = () => pick(el.dataset.sid, true)));
+  };
   const renderSteps = () => {
     $("#steps").innerHTML = run.steps.map((s) => {
-      const k = status(s.sid), [c, l] = LBL[k];
-      return `<li data-sid="${esc(s.sid)}" class="${s.sid === sel ? "sel" : ""} ${k === "root" ? "root" : ""}">
-        <span class="dot ${k}"></span><span style="min-width:0"><div class="t"><span class="nb">${String(s.idx + 1).padStart(2, "0")}</span> ${esc(s.sid)}</div><div class="m">${esc(s.kind.toUpperCase())} · ${esc(s.name)} · ${ms(s.latency_ms)}</div></span>
-        <span class="b ${c} nodot">${l}</span></li>`;
+      const k = status(s.sid), isOpen = open.has(s.sid);
+      const flag = by[s.sid]?.flags?.[0];
+      return `<div class="stp ${k} ${s.sid === sel ? "sel" : ""} ${visible(s) ? "" : "faded"}" data-sid="${esc(s.sid)}">
+        <div class="h"><span class="n">${nn(s.idx)}</span>
+          <span class="tt"><b>${esc(stepName(s))}</b>${k === "root" ? `<span class="st root">● Root cause identified · ${pct(rc.score, 1)}</span>` : BADGES[k] || ""}${s.error ? `<span class="st hit">${esc(s.error)}</span>` : ""}</span>
+          <span class="meta"><span class="tool">${kindLabel(s).toLowerCase()}:${esc(s.name.replace("call:", ""))}</span><span>${ms(s.latency_ms)}</span></span></div>
+        <div class="sum">${esc(summarize(s.kind === "llm" ? s.output : s.output))}</div>
+        ${k === "root" ? `${deltaEv ? `<div class="anom"><b>${esc(deltaEv.label)}:</b> expected ${esc(deltaEv.expected || "—")} · observed <b>${esc(deltaEv.observed || "—")}</b></div>` : localEv[0] ? `<div class="anom"><b>${esc(localEv[0].label)}:</b> ${esc(localEv[0].text)}</div>` : ""}
+          <div class="prop">↳ Downstream failure propagation (${impacted.size} step${impacted.size === 1 ? "" : "s"} impacted)</div>` : ""}
+        ${k === "warn" && flag ? `<div class="anom" style="font-size:12.5px"><b>Signal:</b> ${esc(flag.text)}</div>` : ""}
+        ${isOpen ? `<div class="det"><div><div class="cap">Input / arguments</div><pre class="json">${jsonHtml(s.args)}</pre></div><div><div class="cap">Output</div><pre class="json">${jsonHtml(s.output)}</pre></div></div>` : ""}
+      </div>`;
     }).join("");
-    $$("#steps li").forEach((li) => (li.onclick = () => pick(li.dataset.sid)));
+    $$("#steps .stp .h").forEach((h) => (h.onclick = () => { const sid = h.parentElement.dataset.sid; open.has(sid) ? open.delete(sid) : open.add(sid); pick(sid); }));
   };
-  const renderGraph = () => { const g = graphSvg(run.steps, status, { selected: sel, onClick: pick }); $("#graph").innerHTML = g.html; g.bind($("#graph")); };
-  const renderInsp = () => {
+
+  const renderPanel = () => {
+    const tabs = [["rca", "trace", "Root Cause Analysis"], ["insp", "code", "Step Inspector"], ["graph", "graph", "Graph"], ["raw", "list", "Raw Trace"]];
+    let body = "";
+    if (tab === "rca") body = rc ? rcaPanel() : `<div class="bd">${isFork ? `<div class="banner ok"><span class="ic">${icon("ff")}</span><div><div class="ttl">Replay of ${rid(run.parent_run_id)} from <em>${esc(run.fork_sid)}</em></div><div class="muted" style="font-size:13px">${run.n_reexecuted}/${run.n_steps} steps re-executed (${esc(run.fork_mode)}); the rest reused from the recording.</div></div></div><a class="btn primary mt" href="#/compare/${run.parent_run_id}/${run.run_id}">Original vs repaired</a>`
+      : `<div class="banner ok"><span class="ic">${icon("check")}</span><div><div class="ttl">No failure detected</div><div class="muted" style="font-size:13px">This run passed the task check. Black Box still scored every step; see the inspector.</div></div></div>`}</div>`;
+    if (tab === "insp") body = inspector();
+    if (tab === "graph") { const g = graphSvg(run.steps, status, { selected: sel, onClick: (x) => pick(x) }); body = `<div class="bd"><div class="graph">${g.html}</div><div class="legend mt"><span><i style="background:#ef4444"></i>root cause</span><span><i style="background:#f4a3a6"></i>impacted</span><span><i style="background:#f59e0b"></i>anomaly</span><span><i style="background:#10b981"></i>ok</span></div><div class="muted mt" style="font-size:12px">Edges are OpenTelemetry span links (data flow) and parent spans (control flow).</div></div>`; setTimeout(() => g.bind($("#rp")), 0); }
+    if (tab === "raw") body = `<div class="bd"><div class="row"><span class="muted" style="font-size:13px">${run.n_steps} spans recorded via OpenTelemetry</span><span class="sp"></span><button class="btn sm" id="dl">Download JSON</button></div><pre class="json" style="max-height:600px">${jsonHtml(run.steps.map(({ sid, kind, name, parents, args, output, latency_ms, error }) => ({ sid, kind, name, parents, args, output, latency_ms, error })))}</pre></div>`;
+    $("#rp").innerHTML = `<div class="tabs">${tabs.map(([k, ic, l]) => `<button data-t="${k}" class="${tab === k ? "on" : ""}">${icon(ic)}${l}</button>`).join("")}</div>${body}`;
+    $$("#rp .tabs button").forEach((b) => (b.onclick = () => { tab = b.dataset.t; renderPanel(); }));
+    $$("#rp [data-pick]").forEach((c) => (c.onclick = () => pick(c.dataset.pick, true)));
+    const dl = $("#dl"); if (dl) dl.onclick = () => { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(run, null, 2)], { type: "application/json" })); a.download = `blackbox_${run.run_id}.json`; a.click(); };
+    const rv = $("#reveal"); if (rv) rv.onclick = reveal;
+  };
+  const rcaPanel = () => {
+    const why = localEv.map((e) => e.text).join(" ") || "The model ranked this step highest from the trace signals.";
+    return `<div class="bd">
+      <div class="rcd"><div class="top2"><span class="lbl">${icon("alert")}LIKELY ROOT CAUSE DETECTED</span><span class="conf">${pct(rc.score, 1)} confidence</span></div>
+        <h2>Step ${nn(rcIdx)} — ${esc(stepName(rcStep))}</h2><div class="row"><span class="muted mono" style="font-size:12px">${kindLabel(rcStep)} · ${esc(rc.sid)}</span></div>
+        <p class="mono" style="font-size:13px">output → ${esc(summarize(rcStep.output))}</p></div>
+      <h3 class="mt2" style="display:flex;gap:8px;align-items:center">${icon("search")}Why this step?</h3>
+      <p style="margin:8px 0 0;font-size:14px;color:var(--text-2)">${esc(why)} ${dx.upstream.healthy ? `Every upstream step (${dx.upstream.steps.length}) looks normal, so the problem first appears here.` : ""}</p>
+      ${deltaEv ? `<div class="cap mt2">State delta inspection</div><div class="delta"><div class="e"><div class="cap">✓ Expected</div><div class="val">${esc(deltaEv.expected || "—")}</div></div><div class="o"><div class="cap">✕ Observed</div><div class="val">${esc(deltaEv.observed || "—")}</div></div></div>` : ""}
+      <div class="row mt2"><h3 style="display:flex;gap:8px;align-items:center">${icon("eye")}Evidence signals</h3><span class="sp"></span><span class="muted" style="font-size:12px">${rc.evidence.length} items · local signals explain ${pct(rc.joint_local)} of the score</span></div>
+      ${rc.evidence.map((e, i) => `<div class="ev ${["upstream_clean", "downstream_impact"].includes(e.signal) ? "ctx" : ""}"><span class="num">${i + 1}</span><div><b>${esc(e.label)}</b><div>${esc(e.text)}</div></div></div>`).join("")}
+      ${impacted.size ? `<div class="cap mt2">Downstream impact breakdown</div>${[...impacted].slice(0, 6).map((sid) => { const s = run.steps.find((x) => x.sid === sid); return `<div class="impact"><span class="chip" data-pick="${esc(sid)}">Step ${nn(s.idx)} (${esc(stepName(s))})</span><span class="muted">→ ${dx.impacted_anomalous.includes(sid) ? "became anomalous" : "consumed the bad value"}</span></div>`; }).join("")}${impacted.size > 6 ? `<div class="muted mt" style="font-size:12.5px">+${impacted.size - 6} more</div>` : ""}` : ""}
+      ${dx.suspects.length > 1 ? `<div class="cap mt2">Other suspects</div><div class="row mt">${dx.suspects.slice(1).map((x) => `<span class="chip" data-pick="${esc(x.sid)}">${esc(stepName(run.steps.find((s) => s.sid === x.sid)))} · ${pct(x.score)}</span>`).join("")}</div>` : ""}
+      ${run.replayable ? `<div class="cta mt2"><h3 style="display:flex;gap:8px;align-items:center">${icon("wand")}Ready to patch and verify?</h3>
+        <p>Restore the checkpoint at Step ${nn(rcIdx)}, change it, and re-execute only what depends on it: <b class="t1">${run.steps.length - plan.size} steps reused</b>, <b class="t1">${plan.size} re-executed</b>.</p>
+        <div class="row"><a class="btn primary" href="${repairHref(rc.sid)}">${icon("ff")}Replay From Here (Step ${nn(rcIdx)})</a><a class="btn" href="${repairHref(rc.sid, "patch_output")}">${icon("code")}Patch output</a></div></div>` : `<div class="muted mt2" style="font-size:12.5px">Recorded from an external agent: diagnosable, not replayable.</div>`}
+      ${run.label ? `<div class="mt"><button class="btn sm ghost" id="reveal">Reveal ground-truth label</button><div id="label"></div></div>` : ""}
+    </div>`;
+  };
+  const inspector = () => {
     const s = run.steps.find((x) => x.sid === sel), a = by[sel], k = status(sel);
-    $("#insp").innerHTML = `<div class="hd"><div class="row">${kind(s.kind)}<h2 class="mono">${esc(s.sid)}</h2><span class="b ${LBL[k][0]} nodot">${LBL[k][1]}</span></div>
-        <span class="mono muted" style="font-size:11px">step ${s.idx + 1}/${run.steps.length} · score ${pct(a.score, 1)} · rank #${a.rank}</span></div>
-      <div class="tabs">${[["signals", "Signals & telemetry"], ["input", "Input JSON"], ["output", "Output JSON"]].map(([t, l]) => `<button data-t="${t}" class="${t === tab ? "on" : ""}">${l}</button>`).join("")}</div>
-      <div class="bd">${tab === "signals" ? `<div class="kv">
-          <span class="k">OPERATION</span><span class="mono">${esc(s.name)}${s.role && s.role !== s.name ? ` <span class="dim">(${esc(s.role)})</span>` : ""}</span>
-          <span class="k">LATENCY</span><span class="mono">${ms(s.latency_ms)}${s.retries ? ` <span class="b root nodot">${s.retries} RETRY</span>` : ""}</span>
-          <span class="k">ERROR</span><span>${s.error ? `<span class="b fail nodot">${esc(s.error)}</span>` : `<span class="dim">none</span>`}</span>
-          <span class="k">DEPENDS ON</span><span class="chips">${s.parents.map((p) => `<span class="chip" data-pick="${esc(p)}">${esc(p)}</span>`).join("") || `<span class="dim">entry step</span>`}</span>
-          <span class="k">USED BY</span><span class="chips">${a.children.map((c) => `<span class="chip" data-pick="${esc(c)}">${esc(c)}</span>`).join("") || `<span class="dim">—</span>`}</span>
-          <span class="k">OUTPUT</span><span class="mono t1">${esc(summarize(s.output))}</span></div>
-          <div class="cap mt2">ANOMALY SIGNALS</div>
-          ${a.flags.length ? a.flags.map((f) => `<div class="row mt" style="flex-wrap:nowrap;align-items:flex-start"><span class="dot ${f.severity === "high" ? "hit" : "warn"}" style="margin-top:5px"></span><span style="font-size:12.5px">${esc(f.text)}</span></div>`).join("") : `<div class="muted mt" style="font-size:12.5px">No anomaly signals on this step.</div>`}
-          ${run.replayable && !isFork ? `<div class="row mt2"><a class="btn sm" href="${repairHref(s.sid)}">${icon("replay")}Replay from here</a><a class="btn sm" href="${repairHref(s.sid, "patch_output")}">Patch output</a>${["tool", "retrieval"].includes(s.kind) ? `<a class="btn sm" href="${repairHref(s.sid, "patch_args")}">Patch arguments</a>` : ""}</div>` : ""}`
-        : `<pre class="json">${jsonHtml(tab === "input" ? s.args : s.output)}</pre>`}</div>`;
-    $$("[data-t]", $("#insp")).forEach((b) => (b.onclick = () => { tab = b.dataset.t; renderInsp(); }));
-    $$("[data-pick]", $("#insp")).forEach((c) => (c.onclick = () => pick(c.dataset.pick)));
+    return `<div class="bd">
+      <div class="row"><span class="n mono" style="color:var(--muted)">STEP ${nn(s.idx)}</span><h2>${esc(stepName(s))}</h2>${k === "root" ? `<span class="st root">Root cause</span>` : BADGES[k] || ""}</div>
+      <div class="kpis mt" style="grid-template-columns:repeat(3,1fr)">
+        <div class="kpi"><div class="cap">Root-cause score</div><div class="v">${pct(a.score, 1)}<small>rank #${a.rank}</small></div></div>
+        <div class="kpi"><div class="cap">Latency</div><div class="v">${ms(s.latency_ms)}</div></div>
+        <div class="kpi"><div class="cap">Type</div><div class="v" style="font-size:14px">${kindLabel(s)}</div></div></div>
+      <div class="cap mt2">Depends on</div><div class="row mt">${s.parents.map((p) => `<span class="chip" data-pick="${esc(p)}">${esc(stepName(run.steps.find((x) => x.sid === p) || { name: p, kind: "" }))}</span>`).join("") || `<span class="dim">entry step</span>`}</div>
+      <div class="cap mt">Used by</div><div class="row mt">${a.children.map((c) => `<span class="chip" data-pick="${esc(c)}">${esc(stepName(run.steps.find((x) => x.sid === c) || { name: c, kind: "" }))}</span>`).join("") || `<span class="dim">—</span>`}</div>
+      <div class="cap mt2">Anomaly signals</div>${a.flags.length ? a.flags.map((f) => `<div class="ev"><span class="num" style="background:${f.severity === "high" ? "#9b1c22" : "#8a5a0b"}">!</span><div>${esc(f.text)}</div></div>`).join("") : `<div class="muted mt" style="font-size:13px">No anomaly signals on this step.</div>`}
+      <div class="grid g2 mt2"><div><div class="cap">Input / arguments</div><pre class="json">${jsonHtml(s.args)}</pre></div><div><div class="cap">Output</div><pre class="json">${jsonHtml(s.output)}</pre></div></div>
+      ${run.replayable && !isFork && s.kind !== "input" ? `<div class="row mt2"><a class="btn primary sm" href="${repairHref(s.sid)}">${icon("replay")}Replay from here</a><a class="btn sm" href="${repairHref(s.sid, "patch_output")}">Patch output</a>${["tool", "retrieval"].includes(s.kind) ? `<a class="btn sm" href="${repairHref(s.sid, "patch_args")}">Patch arguments</a>` : ""}</div>` : ""}
+    </div>`;
   };
-  function pick(sid) { sel = sid; renderSteps(); renderGraph(); renderInsp(); }
-  $$(".rcol [data-pick]").forEach((c) => (c.onclick = () => pick(c.dataset.pick)));
-  const rv = $("#reveal");
-  if (rv) rv.onclick = () => {
+  const reveal = () => {
     const L = run.label, rank = dx.steps.find((s) => s.sid === L.fault_sid)?.rank;
-    $("#label").innerHTML = `<div class="card mt"><div class="cap">GROUND-TRUTH LABEL (NOT USED BY THE MODEL)</div><div class="mt">Injected <b class="mono">${esc(L.fault_type)}</b> at <b class="mono">${esc(L.fault_sid)}</b> ${L.heldout ? `<span class="b blue nodot">NEVER SEEN IN TRAINING</span>` : ""}</div>
-      <div class="muted mt" style="font-size:12px">${esc(L.note || L.description)}</div><div class="mt">${rank === 1 ? `<span class="b ok">BLACK BOX RANKED IT #1</span>` : `<span class="b root">BLACK BOX RANKED IT #${rank}</span>`}</div></div>`;
-    rv.remove();
+    $("#label").innerHTML = `<div class="ev ctx mt"><span class="num">i</span><div><b>Ground truth (never shown to the model)</b><div>Injected <span class="mono">${esc(L.fault_type)}</span> at <span class="mono">${esc(L.fault_sid)}</span>${L.heldout ? " · fault type never seen in training" : ""}. ${esc(L.note || L.description)} <b style="color:${rank === 1 ? "var(--green-2)" : "var(--amber-2)"}">Black Box ranked it #${rank}.</b></div></div></div>`;
+    $("#reveal").remove();
   };
-  renderSteps(); renderGraph(); renderInsp();
+  function pick(sid, scroll) {
+    sel = sid;
+    if (tab === "rca" && sid !== rc?.sid) tab = "insp";
+    renderSteps(); renderPanel();
+    if (scroll) $(`#steps .stp[data-sid="${CSS.escape(sid)}"]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+  KEYHANDLER = (e) => {
+    if (/input|textarea|select/i.test(document.activeElement.tagName) || $(".pal-bg")) return;
+    const i = run.steps.findIndex((s) => s.sid === sel);
+    if (e.key === "ArrowDown" || e.key === "j") { e.preventDefault(); pick(run.steps[Math.min(run.steps.length - 1, i + 1)].sid, true); }
+    else if (e.key === "ArrowUp" || e.key === "k") { e.preventDefault(); pick(run.steps[Math.max(0, i - 1)].sid, true); }
+    else if (e.key === "Enter") { open.has(sel) ? open.delete(sel) : open.add(sel); renderSteps(); }
+    else if (e.key.toLowerCase() === "r" && rc && run.replayable) go(repairHref(rc.sid));
+  };
+  document.addEventListener("keydown", KEYHANDLER);
+  $("#cp").onclick = () => { navigator.clipboard?.writeText(run.run_id); toast(`Copied ${run.run_id}`); };
+  renderFilters(); renderBar(); renderSteps(); renderPanel();
 }
 
-// ------------------------------------------------------------------ REPLAY & REPAIR
+// ================================================================== REPLAY & REPAIR
 async function repairPicker() {
-  const [f, r] = await Promise.all([api("/api/runs?status=failed&limit=12"), api("/api/replays?limit=6")]);
+  const [f, r] = await Promise.all([api("/api/runs?status=failed&limit=10"), api("/api/replays?limit=6")]);
   view().innerHTML = `
-    <h1>Replay &amp; Repair</h1><div class="sub">Pick a failed execution. Black Box restores the checkpoint at its likely root cause so you can repair that step and re-run only what depends on it.</div>
-    <div class="mb">${loop({ detect: "done", explain: "done", replay: "now" })}</div>
+    <h1>Replay & Repair</h1><div class="sub">Pick a failed execution. Black Box restores the checkpoint at its diagnosed root cause; you change that step and only its dependents re-run.</div>
     <div class="grid" style="grid-template-columns:minmax(0,1.5fr) minmax(0,1fr)">
-      <div class="panel"><div class="hd"><h2>Failed executions</h2></div>
-        ${f.runs.length ? `<div class="tablewrap"><table><thead><tr><th>Run</th><th>Task</th><th>Checkpoint (likely root cause)</th><th></th></tr></thead><tbody>${f.runs.map((x) => `<tr class="click" data-go="#/repair/${x.run_id}?sid=${encodeURIComponent(x.root?.sid || "")}">
-          <td class="mono t1">${short(x.run_id)}</td><td><div class="trunc" style="max-width:300px">${esc(x.question)}</div></td>
-          <td><span class="b root nodot">${esc(x.root?.sid)}</span> <span class="mono muted" style="font-size:11px">${pct(x.root?.score)}</span></td><td class="num"><span class="btn sm">Open</span></td></tr>`).join("")}</tbody></table></div>`
-        : empty("NO FAILED RUNS", "Your agent executions are healthy.", `<a class="btn primary" href="#/demo">Run Demo</a>`)}</div>
-      <div class="panel"><div class="hd"><h2>Recent replays</h2></div>
-        ${r.runs.length ? `<table><tbody>${r.runs.map((x) => `<tr class="click" data-go="#/compare/${x.parent_run_id}/${x.run_id}"><td class="mono">${short(x.parent_run_id)}</td><td class="mono muted">${esc(x.fork_sid)}</td><td>${x.parent_success === 0 && x.success ? `<span class="b ok">VERIFIED</span>` : st(x.success)}</td></tr>`).join("")}</tbody></table>`
+      <div class="card"><div class="hd"><h2>Failed executions</h2></div>${f.runs.length ? `<div class="wrap"><table><tbody>${f.runs.map((x) => `<tr class="click" data-go="#/repair/${x.run_id}?sid=${encodeURIComponent(x.root?.sid || "")}">
+        <td>${statusPill(false)}</td><td><span class="idlink">${rid(x.run_id)}</span></td><td><div class="trunc t1" style="max-width:280px">${esc(x.question)}</div></td>
+        <td><span class="rc"><span class="stepn">${esc((x.root?.sid || "").split(".")[0])}</span><span class="why">${esc(stepName({ name: x.root?.name || "", kind: "" }))}</span></span></td><td class="num"><span class="btn sm">Open ${icon("arrow")}</span></td></tr>`).join("")}</tbody></table></div>`
+        : empty("NO FAILED RUNS", "Your agent executions are healthy.", `<a class="btn primary" href="#/demo">Run Live Demo</a>`)}</div>
+      <div class="card"><div class="hd"><h2>Recent replays</h2></div>${r.runs.length ? `<div class="wrap"><table><tbody>${r.runs.map((x) => `<tr class="click" data-go="#/compare/${x.parent_run_id}/${x.run_id}"><td><span class="idlink">${rid(x.parent_run_id)}</span></td><td class="muted mono" style="font-size:12px">${esc(x.fork_sid)}</td><td>${x.parent_success === 0 && x.success ? `<span class="st rep">✓ Verified</span>` : statusPill(x.success)}</td></tr>`).join("")}</tbody></table></div>`
         : empty("NO REPLAY YET", "Select a suspicious step to replay from its checkpoint.", `<a class="btn" href="#/investigate">Investigate Trace</a>`)}</div>
     </div>`;
   $$("[data-go]").forEach((el) => (el.onclick = () => go(el.dataset.go)));
 }
 
-function diffFields(a, b) {
-  const keys = [...new Set([...Object.keys(a || {}), ...Object.keys(b || {})])];
-  return keys.filter((k) => JSON.stringify(a?.[k]) !== JSON.stringify(b?.[k])).map((k) => [k, a?.[k], b?.[k]]);
+function codeLines(obj, changedKeys = []) {
+  const lines = JSON.stringify(obj, null, 2).split("\n");
+  return lines.map((l, i) => { const del = changedKeys.some((k) => l.trim().startsWith(`"${k}"`)); return `<div class="ln ${del ? "del" : ""}"><span>${del ? "−" : ""}${i + 1}</span><span>${esc(l)}</span></div>`; }).join("");
 }
 
 async function repairView(id, q) {
   const [run, dx] = await Promise.all([api(`/api/runs/${id}`), api(`/api/runs/${id}/diagnosis`)]);
-  if (!run.replayable) { view().innerHTML = empty("REPLAY UNAVAILABLE", "This run was recorded through the SDK without a replay adapter, so it can be diagnosed but not replayed.", `<a class="btn" href="#/investigate/${id}">Back to investigation</a>`); return; }
+  if (!run.replayable) { view().innerHTML = empty("REPLAY UNAVAILABLE", "This run came from an external agent; it can be diagnosed but not replayed.", `<a class="btn" href="#/investigate/${id}">Back to investigation</a>`); return; }
   const by = Object.fromEntries(dx.steps.map((s) => [s.sid, s]));
-  const rc = dx.root_cause;
-  let sid = q.sid && by[q.sid] ? q.sid : rc?.sid || run.steps[0].sid, mode = q.mode || "repair", staged = null, result = null, error = null, busy = false, srcNote = "";
+  const rc = run.success ? null : dx.root_cause;
+  let sid = q.sid && by[q.sid] ? q.sid : rc?.sid || run.steps[1]?.sid || run.steps[0].sid;
+  let mode = q.mode || "repair", draft = null, result = null, error = null, busy = false, note = "";
+  const log = [];
+  const t0 = performance.now();
+  const stamp = () => `[${((performance.now() - t0) / 1000).toFixed(3).padStart(7, "0")}]`;
+  const addLog = (cls, txt) => log.push(`<span class="t">${stamp()}</span> <span class="${cls}">${esc(txt)}</span>`);
   const step = () => run.steps.find((s) => s.sid === sid);
   const recorded = () => (mode === "patch_args" ? step().args : step().output);
-
-  const verifyHtml = () => {
-    if (busy) return `<div class="panel"><div class="bd row"><span class="spin"></span><span>Restoring checkpoint at <b class="mono">${esc(sid)}</b> and re-executing dependent steps…</span></div></div>`;
-    if (error) return `<div class="errbox"><div class="t">REPLAY FAILED${error.status ? ` · HTTP ${error.status}` : ""}</div><div class="mt">${esc(error.message)}</div><div class="row mt"><button class="btn sm" id="retry">Retry</button><a class="btn sm" href="#/investigate/${id}">Back to trace</a></div></div>`;
-    if (!result) return `<div class="panel"><div class="hd"><h2>3 · Verify</h2></div>${empty("NO REPLAY YET", "Choose the checkpoint, prepare a repair, then run the replay. Black Box verifies the outcome against the task check.")}</div>`;
-    const r = result, x = r.reexecution_error, good = r.verified || (r.success && r.orig_success);
-    return `<div class="panel verify ${good ? "" : "no"}"><div class="hd"><h2>3 · Verify</h2><a class="btn ${r.verified ? "green" : ""}" href="#/compare/${id}/${r.run_id}">${icon("compare")}View Comparison</a></div><div class="bd">
-      <div class="vh">${r.verified ? `${icon("verify")}REPAIR VERIFIED` : r.success ? `${icon("check")}REPLAY SUCCEEDED` : `${icon("x")}REPAIR NOT VERIFIED`}</div>
-      ${x ? `<div class="errbox mt"><div class="t">CHECKPOINT RESTORED, BUT STEP ${String(x.idx + 1).padStart(2, "0")} FAILED DURING RE-EXECUTION</div>
-        <div class="kv mt"><span class="k">STEP</span><span class="mono">${esc(x.sid)} · ${esc(x.name)}</span><span class="k">ERROR</span><span class="mono">${esc(x.error)}</span><span class="k">ARGUMENTS</span><span><pre class="json" style="margin:0">${jsonHtml(x.args)}</pre></span></div>
-        <div class="row mt"><button class="btn sm" id="retry">Retry</button><a class="btn sm" href="#/investigate/${r.run_id}">Open replay trace</a></div></div>`
-        : !r.success ? `<div class="muted mt" style="font-size:12.5px">The replay ran, but the repaired execution still fails the task check. Try another checkpoint or patch.</div>` : ""}
-      <div class="outc mt">
-        <div class="o"><div class="cap">ORIGINAL EXECUTION</div><div class="mt">${st(r.orig_success)}</div><div class="val">${esc(summarize(run.final))}</div></div>
-        <div class="muted" style="text-align:center">${icon("arrow")}</div>
-        <div class="o"><div class="cap">REPAIRED EXECUTION</div><div class="mt">${st(r.success)}</div><div class="val">${esc(summarize(r.final))}</div></div>
-      </div>
-      <div class="metrics mt" style="grid-template-columns:repeat(5,1fr)">
-        <div class="metric"><div class="cap">ORIGINAL</div><div class="v">${r.n_total}</div><div class="s">steps</div></div>
-        <div class="metric"><div class="cap">REPAIRED</div><div class="v">${r.n_total}</div><div class="s">logical steps</div></div>
-        <div class="metric"><div class="cap">RE-EXECUTED</div><div class="v blue">${r.n_reexecuted}</div><div class="s">naive re-run from here: ${r.n_suffix}</div></div>
-        <div class="metric"><div class="cap">REUSED</div><div class="v">${r.n_reused}</div><div class="s">restored from checkpoint</div></div>
-        <div class="metric"><div class="cap">CHANGED</div><div class="v green">${r.changed.length}</div><div class="s">diverged at ${esc(r.diff.first_divergence || "—")}</div></div>
-      </div>
-      <div class="muted mt" style="font-size:12px">Task check expects <span class="t1">${esc(summarize(r.expected))}</span> · changed: <span class="mono">${r.changed.map(esc).join(", ") || "none"}</span> · saved as <a class="mono t1" href="#/investigate/${r.run_id}"><u>${short(r.run_id)}</u></a></div>
-    </div></div>`;
-  };
+  addLog("", `Trace ${rid(run.run_id)} loaded: ${run.n_steps} recorded spans.`);
 
   const shell = () => {
-    const rerun = descendants(run.steps, sid), ck = step().idx;
-    const tag = (s) => s.sid === sid ? ["ck", "RE-EXECUTED · CHECKPOINT", "b root"] : rerun.has(s.sid) ? ["re", "RE-EXECUTED", "b blue"]
-      : s.idx < ck ? ["", "REUSED", "b slate"] : ["", "PRESERVED", "b ghost"];
-    const stage = result ? { detect: "done", explain: "done", replay: "done", repair: "done", verify: result.verified ? "done" : "now" }
-      : staged || mode === "repair" ? { detect: "done", explain: "done", replay: "done", repair: "now" } : { detect: "done", explain: "done", replay: "now" };
-    const isRoot = rc && sid === rc.sid && !run.success;
+    const s = step(), rerun = descendants(run.steps, sid), reused = run.steps.filter((x) => !rerun.has(x.sid));
+    const before = reused.filter((x) => x.idx < s.idx), after = reused.filter((x) => x.idx > s.idx), down = run.steps.filter((x) => rerun.has(x.sid) && x.sid !== sid);
+    const isRoot = rc && sid === rc.sid;
+    const ev = isRoot ? rc.evidence.find((e) => e.observed) : null;
     const cur = recorded();
-    const obsEv = isRoot ? rc.evidence.find((e) => e.observed) : null;
+    const changed = draft ? diffFields(cur, draft).map((d) => d[0]) : [];
+    const banner = result
+      ? `<div class="banner ${result.verified || (result.success && result.orig_success) ? "ok" : "bad"}"><span class="ic">${icon(result.success ? "check" : "x")}</span><div class="sp"><div class="ttl">${result.verified ? "Repair verified" : result.success ? "Replay succeeded" : "Repair not verified"} — <em>${result.n_reused} steps reused</em>, <em>${result.n_reexecuted} re-executed</em>${result.path_changed ? ", agent took a new path" : ""}.</div><div class="muted" style="font-size:13px">Original ${esc(summarize(run.final))} → repaired ${esc(summarize(result.final))} · task check expects ${esc(summarize(result.expected))}</div></div><a class="btn ${result.verified ? "primary" : ""}" href="#/compare/${id}/${result.run_id}">${icon("compare")}Original vs repaired</a></div>`
+      : `<div class="banner"><span class="ic">${icon("ff")}</span><div class="sp"><div class="ttl">Without starting over: <em>${reused.length} steps reused</em>, <em>1 step patched</em>, <em>${down.length} downstream steps</em> scheduled for re-execution.</div><div class="muted" style="font-size:13px">Checkpoint = state after step ${nn(s.idx - 1 < 0 ? 0 : s.idx - 1)}, restored from the recording (event-sourced). ${run.agent.startsWith("react") ? "The agent re-plans after the patch, so the downstream path may change." : ""}</div></div><span class="pill-st">${run.steps.length} total · ${reused.length} reused · ${rerun.size} re-executing</span></div>`;
     view().innerHTML = `
-      <div class="crumbs"><a href="#/runs">Runs</a><span>/</span><a href="#/investigate/${id}">${short(id)}</a><span>/</span><span class="t1">replay &amp; repair</span>${st(run.success)}</div>
-      <div class="row mb"><h1>Replay &amp; Repair</h1><span class="sp"></span><a class="btn sm" href="#/investigate/${id}">${icon("explain")}Back to investigation</a></div>
-      <div class="mb">${loop(stage)}</div>
-      <div class="grid g2">
-        <div class="panel"><div class="hd"><h2>1 · Checkpoint</h2><span class="b ${result ? "ok" : "blue"}">${result ? "CHECKPOINT RESTORED" : "REPLAY PLAN"}</span></div><div class="bd">
-          <div class="cap">REPLAY FROM STEP</div>
-          <select id="sid" class="mt" style="width:100%">${run.steps.map((s) => `<option value="${esc(s.sid)}" ${s.sid === sid ? "selected" : ""}>${String(s.idx + 1).padStart(2, "0")} · ${esc(s.sid)} · ${esc(s.name)} — score ${pct(by[s.sid].score)}${rc && s.sid === rc.sid ? "  ◆ likely root cause" : ""}</option>`).join("")}</select>
-          <div class="versus mt2">
-            <div class="vrow"><span class="lb">FULL EXECUTION</span><span class="cells">${run.steps.map(() => `<i class="full"></i>`).join("")}</span><span class="num">${run.steps.length} steps</span></div>
-            <div class="vrow"><span class="lb" style="color:var(--blue-2)">BLACK BOX REPLAY</span><span class="cells">${run.steps.map((s) => `<i class="${rerun.has(s.sid) ? "re" : "us"}" title="${esc(s.sid)}"></i>`).join("")}</span><span class="num"><span style="color:var(--blue-2)">${rerun.size}</span> re-run · ${run.steps.length - rerun.size} reused</span></div>
-          </div>
-          <ul class="plan mt2">${run.steps.map((s) => { const [cls, l, b] = tag(s); return `<li class="${cls}"><span class="mono muted">${String(s.idx + 1).padStart(2, "0")}</span><span class="t">${esc(s.sid)} <span class="muted">${esc(s.name)}</span></span><span class="${b} nodot">${l}</span></li>`; }).join("")}</ul>
-        </div></div>
-        <div class="panel"><div class="hd"><h2>2 · Repair</h2>${isRoot ? `<span class="b root">LIKELY ROOT CAUSE · ${pct(rc.score)}</span>` : `<span class="b ghost nodot">SCORE ${pct(by[sid].score)}</span>`}</div><div class="bd">
-          <div class="row"><span class="mono t1" style="font-size:15px">Step ${String(step().idx + 1).padStart(2, "0")} · ${esc(sid)}</span>${kind(step().kind)}<span class="muted mono" style="font-size:11px">${esc(step().name)}</span></div>
-          ${obsEv ? `<div class="eo mt"><span class="k">EVIDENCE</span><span>${esc(obsEv.label)}</span>${obsEv.expected ? `<span class="k">EXPECTED</span><span class="exp">${esc(obsEv.expected)}</span>` : ""}<span class="k">OBSERVED</span><span class="obs">${esc(obsEv.observed)}</span></div>` : ""}
-          <div class="cap mt2">CURRENT ${mode === "patch_args" ? "ARGUMENTS" : "VALUE"}</div>
-          <div class="mono t1 mt" style="font-size:13px">${esc(summarize(cur))}</div>
-          <details><summary class="cap" style="cursor:pointer;margin-top:8px">recorded JSON</summary><pre class="json">${jsonHtml(cur)}</pre></details>
-          <div class="cap mt2">ALTERNATIVE EXECUTION</div>
-          <div class="seg mt" id="modes">${[["repair", "Re-run step fresh"], ["patch_output", "Patch output"], ["patch_args", "Patch arguments"]].filter(([k]) => k !== "patch_args" || ["tool", "retrieval"].includes(step().kind)).map(([k, l]) => `<button data-m="${k}" class="${k === mode ? "on" : ""}">${l}</button>`).join("")}</div>
-          <div class="muted mt" style="font-size:12px">${{ repair: "Re-derive this step's inputs from its parents and call the real tool or LLM again.", patch_output: "Replace this step's output with your value; every dependent step re-runs.", patch_args: "Call this step's real function with your arguments; every dependent step re-runs." }[mode]}</div>
-          ${mode !== "repair" ? `
-            <div class="row mt2"><span class="cap">PROPOSED FIX (JSON)</span><span class="sp"></span>${run.split === "demo" ? `<button class="btn sm" id="docfix">Use suggested repair</button>` : ""}</div>
-            <textarea id="patch" rows="7" class="mt">${esc(JSON.stringify(staged ?? cur, null, 2))}</textarea>
-            <div id="srcnote" class="dim" style="font-size:11px">${esc(srcNote)}</div>
-            ${staged ? `<div class="card mt"><div class="row"><span class="b blue">PATCH APPLIED</span><span class="muted" style="font-size:12px">${diffFields(cur, staged).length} field(s) change · ready to replay</span></div>
-              ${diffFields(cur, staged).map(([k, a, b]) => `<div class="diffline"><span class="muted">${esc(k)}</span><span class="from">${esc(JSON.stringify(a))}</span><span class="dim">→</span><span class="to">${esc(JSON.stringify(b))}</span></div>`).join("") || `<div class="muted mt" style="font-size:12px">No change from the recorded value.</div>`}</div>` : ""}
-            <div class="row mt">
-              <button class="btn" id="apply">${icon("check")}Apply Patch</button>
-              <button class="btn primary" id="run" ${staged ? "" : "disabled"} title="${staged ? "" : "Apply the patch first"}">${icon("replay")}Run Replay</button>
-              <button class="btn" id="cancel">Cancel</button></div>`
-          : `<div class="row mt2"><button class="btn primary" id="run">${icon("replay")}Run Replay</button>${run.split === "demo" ? `<button class="btn sm" id="docfix">Use suggested repair</button>` : ""}<span class="dim" style="font-size:11px">${esc(srcNote)}</span></div>`}
-        </div></div>
-      </div>
-      <div class="mt" id="verify">${verifyHtml()}</div>`;
+      <div class="crumbs"><span style="color:var(--indigo-3)">${icon("replay")}</span><b class="t1">REPLAY & REPAIR WORKSPACE</b><a href="#/investigate/${id}">RUN ${rid(id)}</a><span>·</span><span>checkpoint at <b class="t1">Step ${nn(s.idx)} (${esc(stepName(s))})</b></span></div>
+      ${banner}
+      <div class="ws mt">
+        <div class="card"><div class="hd"><div class="row"><span style="color:var(--indigo-3)">${icon("graph")}</span><h2>EXECUTION CHECKPOINT TREE</h2></div><span class="muted" style="font-size:12px">click a step to move the checkpoint</span></div>
+          <div class="bd tree">
+            <div class="grp"><div class="gh"><span class="cap">${icon("check")}Before checkpoint — reused state</span><span class="muted" style="font-size:12px">from recording</span></div>
+              ${before.map((x) => `<div class="tnode reused" data-s="${esc(x.sid)}"><span class="n">${nn(x.idx)}</span><div><b>${esc(stepName(x))}</b><small>${esc(summarize(x.output))}</small></div><span class="st reused">✓ Reused</span></div>`).join("") || `<div class="muted" style="font-size:13px">none</div>`}</div>
+            <div class="conn">${icon("bolt")}State restored at checkpoint</div>
+            <div class="grp"><div class="gh"><span class="cap">${icon("wand")}Checkpoint — active patch target</span><span class="st rerun">Current focus</span></div>
+              <div class="tnode focus"><span class="n">${nn(s.idx)}</span><div><b>${esc(stepName(s))} ${isRoot ? `<span class="st root" style="margin-left:6px">Root cause</span>` : ""}</b><small>${mode === "repair" ? "re-run fresh" : mode === "patch_output" ? "output will be patched" : "arguments will be patched"}</small></div><span class="st rerun">${result ? "↻ Replayed" : "Ready"}</span></div></div>
+            ${down.length ? `<div class="conn">${icon("down")}Cascading re-execution</div><div class="grp"><div class="gh"><span class="cap">${icon("replay")}Downstream — scheduled for re-execution</span></div>
+              ${down.map((x) => `<div class="tnode" data-s="${esc(x.sid)}"><span class="n">${nn(x.idx)}</span><div><b>${esc(stepName(x))}</b><small>${esc(summarize(x.output))}</small></div><span class="st rerun">↻ Re-execute</span></div>`).join("")}</div>` : ""}
+            ${after.length ? `<div class="grp"><div class="gh"><span class="cap">${icon("check")}Independent — preserved</span></div>${after.map((x) => `<div class="tnode reused" data-s="${esc(x.sid)}"><span class="n">${nn(x.idx)}</span><div><b>${esc(stepName(x))}</b><small>does not depend on the checkpoint</small></div><span class="st reused">Preserved</span></div>`).join("")}</div>` : ""}
+            <div class="cap mt2">Replay effort</div><div class="ratio mt"><div class="ru" style="width:${(reused.length / run.steps.length) * 100}%">${Math.round((reused.length / run.steps.length) * 100)}% REUSED</div><div class="rx" style="width:${(rerun.size / run.steps.length) * 100}%">${Math.round((rerun.size / run.steps.length) * 100)}% RE-RUN</div></div>
+          </div></div>
+        <div class="grid" style="gap:16px">
+          <div class="card"><div class="hd"><div class="row"><span style="color:var(--indigo-3)">${icon("code")}</span><h2>PATCH EDITOR & REPLAY RUNNER</h2></div><span class="st rerun">Step ${nn(s.idx)}: ${esc(stepName(s))}</span></div>
+            <div class="bd">
+              <div class="row"><div class="seg" id="modes">${[["repair", "Re-run fresh"], ["patch_output", "Patch output"], ["patch_args", "Patch arguments"]].filter(([k]) => k !== "patch_args" || ["tool", "retrieval"].includes(s.kind)).map(([k, l]) => `<button data-m="${k}" class="${mode === k ? "on" : ""}">${l}</button>`).join("")}</div>
+                <span class="sp"></span>${run.split === "demo" ? `<button class="btn sm" id="suggest">${icon("wand")}Suggested repair</button>` : ""}</div>
+              <div class="row mt"><button class="btn primary" id="run" ${busy ? "disabled" : ""}>${busy ? `<span class="spin"></span> Replaying…` : `${icon("ff")}${mode === "repair" ? "Run Replay" : "Apply Patch & Run Replay"}`}</button>
+                ${mode !== "repair" ? `<button class="btn" id="discard">${icon("x")}Discard changes</button>` : ""}<span class="muted" style="font-size:12.5px">${esc(note)}</span></div>
+              ${mode === "repair" ? `<div class="editor mt" style="grid-template-columns:1fr"><div><div class="eh"><span>${icon("eye", 'style="vertical-align:-3px"')} Recorded ${s.kind === "llm" ? "decision" : "output"} (will be re-computed)</span><span class="muted">read-only</span></div><pre class="code">${codeLines(s.output)}</pre>
+                  ${ev ? `<div class="note r">${icon("alert", 'style="vertical-align:-3px"')} ${esc(ev.label)}: observed ${esc(ev.observed)}${ev.expected ? `, expected ${esc(ev.expected)}` : ""}.</div>` : ""}<div class="note b">Re-run fresh: ${s.kind === "llm" ? "the model makes this decision again from the restored state" : "the real tool is called again with the same inputs"}, then the agent continues.</div></div></div>`
+              : `<div class="editor mt">
+                  <div class="cur"><div class="eh"><span>⊖ Current ${mode === "patch_args" ? "arguments" : "output"} (recorded)</span><span class="muted">read-only</span></div><pre class="code">${codeLines(cur, changed)}</pre>
+                    ${ev ? `<div class="note r">${icon("alert", 'style="vertical-align:-3px"')} ${esc(ev.label)}: observed ${esc(ev.observed)}${ev.expected ? ` · expected ${esc(ev.expected)}` : ""}</div>` : ""}</div>
+                  <div class="new"><div class="eh"><span>⊕ Patched ${mode === "patch_args" ? "arguments" : "output"} (proposed fix)</span><span class="muted">editable</span></div><textarea id="patch" spellcheck="false">${esc(JSON.stringify(draft ?? cur, null, 2))}</textarea>
+                    <div class="note ${changed.length ? "g" : "b"}" id="vnote">${changed.length ? `Valid JSON · ${changed.length} field(s) change: ${changed.map(esc).join(", ")}` : "Edit the JSON on the left's twin; changed fields are highlighted."}</div></div></div>`}
+            </div></div>
+          <div class="console"><div class="eh"><span class="cap">${icon("term", 'style="vertical-align:-3px"')} Execution status console</span><button class="btn sm ghost" id="clr">Clear</button></div><pre id="log">${log.join("\n")}</pre></div>
+          ${error ? `<div class="errbox"><div class="t">REPLAY FAILED${error.status ? ` · HTTP ${error.status}` : ""}</div><div class="mt">${esc(error.message)}</div><div class="mt"><button class="btn sm" id="retry">Retry</button></div></div>` : ""}
+          ${result?.reexecution_error ? `<div class="errbox"><div class="t">CHECKPOINT RESTORED, BUT STEP ${nn(result.reexecution_error.idx)} FAILED DURING RE-EXECUTION</div><div class="mt mono" style="font-size:12.5px">${esc(result.reexecution_error.sid)}: ${esc(result.reexecution_error.error)}</div><pre class="json">${jsonHtml(result.reexecution_error.args)}</pre></div>` : ""}
+        </div>
+      </div>`;
     bind();
+    const lg = $("#log"); if (lg) lg.scrollTop = lg.scrollHeight;
   };
   async function runReplay() {
-    busy = true; error = null; $("#verify").innerHTML = verifyHtml();
-    try { result = await api(`/api/runs/${id}/replay`, { method: "POST", body: JSON.stringify({ sid, mode, patch: mode === "repair" ? null : staged }) }); }
-    catch (e) { error = e; }
+    let patch = null;
+    if (mode !== "repair") {
+      try { patch = JSON.parse($("#patch").value); if (typeof patch !== "object" || Array.isArray(patch) || !patch) throw new Error("patch must be a JSON object"); }
+      catch (e) { toast(`Patch is not valid: ${e.message}`); return; }
+      draft = patch;
+    }
+    busy = true; error = null;
+    const plan = descendants(run.steps, sid);
+    addLog("", `Restoring checkpoint before step ${nn(step().idx)} (${run.steps.length - plan.size} recorded steps)…`);
+    addLog("", mode === "repair" ? `Re-running ${step().name} fresh.` : `Applying ${mode === "patch_output" ? "output" : "argument"} patch to ${step().name}: ${diffFields(recorded(), patch).map((d) => d[0]).join(", ") || "no field changes"}.`);
+    shell();
+    try {
+      result = await api(`/api/runs/${id}/replay`, { method: "POST", body: JSON.stringify({ sid, mode, patch }) });
+      addLog("okk", `Checkpoint restored · ${result.n_reused} steps reused from the recording.`);
+      addLog("", `Re-executed ${result.n_reexecuted} steps: ${result.rerun.slice(0, 8).join(", ")}${result.rerun.length > 8 ? "…" : ""}`);
+      if (result.path_changed) addLog("", "The agent took a different path after the patch.");
+      addLog(result.success ? "okk" : "err", `Task check: ${result.success ? "PASSED" : "FAILED"} · final ${summarize(result.final)}`);
+      addLog(result.verified ? "okk" : "", result.verified ? `REPAIR VERIFIED · saved as ${rid(result.run_id)}` : `Saved as ${rid(result.run_id)}`);
+    } catch (e) { error = e; addLog("err", `Replay failed: ${e.message}`); }
     busy = false; shell();
-    $("#verify").scrollIntoView({ behavior: "smooth", block: "start" });
   }
   function bind() {
-    $("#sid").onchange = (e) => { sid = e.target.value; staged = null; result = null; error = null; srcNote = ""; shell(); };
-    $$("#modes button").forEach((b) => (b.onclick = () => { mode = b.dataset.m; staged = null; result = null; error = null; shell(); }));
+    $$(".tnode[data-s]").forEach((n) => (n.onclick = () => { if (busy) return; sid = n.dataset.s; draft = null; result = null; error = null; note = ""; if (mode === "patch_args" && !["tool", "retrieval"].includes(step().kind)) mode = "repair"; addLog("", `Checkpoint moved to step ${nn(step().idx)} (${step().name}).`); shell(); }));
+    $$("#modes button").forEach((b) => (b.onclick = () => { mode = b.dataset.m; draft = null; result = null; error = null; shell(); }));
     $("#run").onclick = runReplay;
     const rt = $("#retry"); if (rt) rt.onclick = runReplay;
-    const ap = $("#apply"); if (ap) ap.onclick = () => {
-      try { const v = JSON.parse($("#patch").value); if (typeof v !== "object" || Array.isArray(v) || v === null) throw new Error("patch must be a JSON object"); staged = v; result = null; shell(); }
-      catch (e) { toast(`Patch not applied: ${e.message}`); }
+    const ds = $("#discard"); if (ds) ds.onclick = () => { draft = null; note = ""; shell(); };
+    $("#clr").onclick = () => { log.length = 0; shell(); };
+    const ta = $("#patch");
+    if (ta) ta.oninput = () => {
+      try { const v = JSON.parse(ta.value); const ch = diffFields(recorded(), v); $("#vnote").className = `note ${ch.length ? "g" : "b"}`; $("#vnote").textContent = ch.length ? `Valid JSON · ${ch.length} field(s) change: ${ch.map((d) => d[0]).join(", ")}` : "Valid JSON · no change from the recorded value yet"; }
+      catch (e) { $("#vnote").className = "note r"; $("#vnote").textContent = `Invalid JSON: ${e.message}`; }
     };
-    const cn = $("#cancel"); if (cn) cn.onclick = () => { staged = null; result = null; error = null; shell(); };
-    const df = $("#docfix"); if (df) df.onclick = async () => {
-      try {
-        const p = await api(`/api/demo/patch/${id}`);
-        if (p.sid !== sid || p.mode !== mode) { sid = p.sid; mode = p.mode; staged = p.patch; srcNote = `suggested: ${p.source}`; shell(); return; }
-        $("#patch").value = JSON.stringify(p.patch, null, 2); srcNote = `suggested from the trace: "${p.source}"`; $("#srcnote").textContent = srcNote;
-      }
+    const sg = $("#suggest");
+    if (sg) sg.onclick = async () => {
+      try { const p = await api(`/api/demo/patch/${id}`); sid = p.sid; mode = p.mode; draft = p.patch; note = `suggested from the trace: ${p.source}`; addLog("", `Suggested repair loaded (${p.mode}) — ${p.source}`); shell(); }
       catch (e) { toast(e.message); }
     };
   }
   shell();
 }
 
-// ------------------------------------------------------------------ COMPARISONS
+// ================================================================== COMPARISONS
 async function comparisons() {
-  const d = await api(`/api/replays?limit=100`);
-  view().innerHTML = `<h1>Comparisons</h1><div class="sub">Every replay, compared with its original execution. A repair is verified when a failed run passes the task check after replay.</div>
-    <div class="mb">${loop({ detect: "done", explain: "done", replay: "done", repair: "done", verify: "now" })}</div>
-    <div class="panel">${d.runs.length ? `<div class="tablewrap"><table><thead><tr><th>Original</th><th>Replay</th><th>Checkpoint</th><th>Mode</th><th>Original</th><th></th><th>Repaired</th><th class="num">Re-executed</th><th>Verification</th><th>When</th></tr></thead>
-      <tbody>${d.runs.map((r) => `<tr class="click" data-go="#/compare/${r.parent_run_id}/${r.run_id}">
-        <td class="mono t1">${short(r.parent_run_id)}</td><td class="mono muted">${short(r.run_id)}</td><td class="mono">${esc(r.fork_sid)}</td><td class="muted">${esc((r.fork_mode || "").replace("_", " "))}</td>
-        <td>${st(r.parent_success)}</td><td class="dim">→</td><td>${st(r.success)}</td><td class="num">${r.n_reexecuted}/${r.n_steps}</td>
-        <td>${r.parent_success === 0 && r.success ? `<span class="b ok">REPAIR VERIFIED</span>` : r.success ? `<span class="b ghost nodot">NO-OP</span>` : `<span class="b fail">NOT VERIFIED</span>`}</td><td class="muted">${ago(r.created)}</td></tr>`).join("")}</tbody></table></div>`
+  const d = await api("/api/replays?limit=100");
+  view().innerHTML = `<h1>Comparisons</h1><div class="sub">Every replay next to its original execution. A repair is verified when a failed run passes the task check after replay.</div>
+    <div class="card">${d.runs.length ? `<div class="wrap"><table><thead><tr><th>Original</th><th>Replay</th><th>Checkpoint</th><th>Mode</th><th>Outcome</th><th class="num">Re-executed</th><th>Verification</th><th>When</th></tr></thead>
+      <tbody>${d.runs.map((r) => `<tr class="click" data-go="#/compare/${r.parent_run_id}/${r.run_id}"><td><span class="idlink">${rid(r.parent_run_id)}</span></td><td class="muted mono" style="font-size:12.5px">${rid(r.run_id)}</td>
+        <td class="mono" style="font-size:12.5px">${esc(r.fork_sid)}</td><td class="muted">${esc((r.fork_mode || "").replace("_", " "))}</td><td>${statusPill(r.parent_success)} <span class="dim">→</span> ${statusPill(r.success)}</td>
+        <td class="num">${r.n_reexecuted}/${r.n_steps}</td><td>${r.parent_success === 0 && r.success ? `<span class="st rep">✓ Repair verified</span>` : r.success ? `<span class="st ghost">No-op</span>` : `<span class="st fail">Not verified</span>`}</td><td class="muted">${ago(r.created)}</td></tr>`).join("")}</tbody></table></div>`
       : empty("NO REPLAY YET", "Select a suspicious step to replay from its checkpoint.", `<a class="btn primary" href="#/investigate">Investigate Trace</a>`)}</div>`;
   $$("[data-go]").forEach((el) => (el.onclick = () => go(el.dataset.go)));
 }
 
 async function compareView(a, b) {
-  const c = await api(`/api/compare?a=${a}&b=${b}`);
-  view().innerHTML = `
-    <div class="crumbs"><a href="#/comparisons">Comparisons</a><span>/</span><span class="t1">${short(a)} vs ${short(b)}</span></div>
-    <div class="row mb"><h1>Repair verification</h1>${c.fixed ? `<span class="b ok">REPAIR VERIFIED</span>` : c.b.success ? `<span class="b ok">SUCCESS</span>` : `<span class="b fail">NOT VERIFIED</span>`}<span class="sp"></span><a class="btn sm" href="#/investigate/${b}">Open replay trace</a></div>
-    <div class="mb">${loop({ detect: "done", explain: "done", replay: "done", repair: "done", verify: c.fixed ? "done" : "now" })}</div>
-    <div class="vsHead">
-      <div class="side2"><div class="cap">ORIGINAL</div><div class="row mt">${st(c.a.success)}<a class="mono muted" href="#/investigate/${a}">${short(a)}</a></div><div class="mono t1 mt" style="font-size:18px">${esc(summarize(c.a.final))}</div></div>
-      <div class="mid">VS</div>
-      <div class="side2 ${c.fixed ? "fix" : ""}"><div class="cap">REPAIRED${c.b.fork_sid ? ` · FROM ${esc(c.b.fork_sid)} (${esc((c.b.fork_mode || "").replace("_", " "))})` : ""}</div><div class="row mt">${st(c.b.success)}<a class="mono muted" href="#/investigate/${b}">${short(b)}</a></div><div class="mono t1 mt" style="font-size:18px">${esc(summarize(c.b.final))}</div></div>
-    </div>
-    <div class="metrics mb" style="grid-template-columns:repeat(5,1fr)">
-      <div class="metric"><div class="cap">EXECUTION DIVERGED AT</div><div class="v" style="font-size:16px">${esc(c.first_divergence || "—")}</div></div>
-      <div class="metric"><div class="cap">CHANGED</div><div class="v green">${c.n_changed}</div><div class="s">steps</div></div>
-      <div class="metric"><div class="cap">RE-EXECUTED</div><div class="v blue">${c.n_rerun}</div><div class="s">steps</div></div>
-      <div class="metric"><div class="cap">REUSED</div><div class="v">${c.n_reused}</div><div class="s">steps</div></div>
-      <div class="metric"><div class="cap">TASK CHECK EXPECTS</div><div class="v" style="font-size:15px">${esc(summarize(c.expected))}</div></div>
-    </div>
-    <div class="panel"><div class="tablewrap"><table class="cmp"><thead><tr><th>#</th><th>Step</th><th>Original</th><th>Repaired</th><th>Status</th></tr></thead><tbody>
-      ${c.rows.map((r, i) => `<tr class="click ${r.changed ? "chg" : ""}" data-i="${i}">
-        <td class="dim">${String(r.idx + 1).padStart(2, "0")}</td><td>${kind(r.kind)} <span class="t1">${esc(r.sid)}</span> <span class="muted">${esc(r.name)}</span></td>
-        <td>${r.changed ? `<span style="color:var(--red-2)">${esc(summarize(r.before))}</span>` : `<span class="muted">${esc(summarize(r.before))}</span>`}</td>
-        <td>${r.reused ? `<span class="muted">↩ same (reused)</span>` : r.changed ? `<span style="color:var(--green-2)">${esc(summarize(r.after))}</span>` : `<span class="muted">${esc(summarize(r.after))}</span>`}</td>
-        <td>${r.status === "added" ? `<span class="b blue nodot">NEW PATH · ADDED</span>` : r.status === "removed" ? `<span class="b fail nodot">NOT IN REPLAY</span>` : r.reused ? `<span class="b slate nodot">REUSED</span>` : r.changed ? `<span class="b ok nodot">CHANGED · RE-EXECUTED</span>` : `<span class="b blue nodot">RE-EXECUTED · SAME</span>`}</td></tr>
-        <tr class="det" data-d="${i}" style="display:none"><td></td><td colspan="4"><div class="grid g2"><div><div class="cap">ORIGINAL OUTPUT</div><pre class="json">${jsonHtml(r.before)}</pre></div><div><div class="cap">REPAIRED OUTPUT</div><pre class="json">${jsonHtml(r.after)}</pre></div></div></td></tr>`).join("")}
-    </tbody></table></div></div>`;
-  $$("tr[data-i]").forEach((tr) => (tr.onclick = () => { const d = $(`tr[data-d="${tr.dataset.i}"]`); d.style.display = d.style.display === "none" ? "" : "none"; }));
+  const [c, ra, rb] = await Promise.all([api(`/api/compare?a=${a}&b=${b}`), api(`/api/runs/${a}`), api(`/api/runs/${b}`)]);
+  const dxa = await api(`/api/runs/${a}/diagnosis`).catch(() => null);
+  const rootSid = !ra.success && dxa ? dxa.root_cause?.sid : null;
+  const latA = ra.steps.reduce((x, s) => x + s.latency_ms, 0), latB = rb.steps.filter((s) => !s.reused).reduce((x, s) => x + s.latency_ms, 0);
+  let vp = "side";
+  const draw = () => {
+    const rows = c.rows;
+    view().innerHTML = `
+      <div class="crumbs"><span style="color:var(--indigo-3)">${icon("shield")}</span><a href="#/comparisons">COMPARISONS</a><span>/</span><span>diff:${rid(a)}..${rid(b)}</span><span class="sp"></span>${c.b.fork_sid ? `<span>CHECKPOINT: <b class="t1">${esc(c.b.fork_sid)}</b> (${esc((c.b.fork_mode || "").replace("_", " "))})</span>` : ""}</div>
+      <div class="row"><div><h1>REPAIR VERIFICATION — ORIGINAL VS REPAIRED</h1><div class="sub" style="margin:4px 0 0">Step-aligned diff of the recorded execution and the replay, with checkpoint reuse.</div></div><span class="sp"></span><a class="btn" href="#/investigate/${a}">Open original</a><a class="btn" href="#/investigate/${b}">Open replay trace</a></div>
+      <div class="banner mt ${c.fixed ? "ok" : c.b.success ? "ok" : "bad"}"><span class="ic">${icon(c.fixed || c.b.success ? "check" : "x")}</span>
+        <div class="sp"><div class="ttl">${c.fixed ? "✓ REPAIR VERIFIED" : c.b.success ? "Replay succeeded" : "Repair not verified"} · <em>${c.n_rerun} steps re-executed</em> · <em>${c.n_reused} reused</em> · diverged at ${esc(c.first_divergence || "—")}</div>
+          <div class="muted" style="font-size:13px">Work to test the fix: <b class="t1">${ms(latB)}</b> of re-executed steps vs <b class="t1">${ms(latA)}</b> for the whole original run${latA ? ` (${Math.round((1 - latB / latA) * 100)}% less)` : ""}.</div></div>
+        <div class="seg" id="vp"><button data-v="side" class="${vp === "side" ? "on" : ""}">Side-by-side</button><button data-v="table" class="${vp === "table" ? "on" : ""}">Unified</button></div></div>
+      ${vp === "side" ? `<div class="cols mt">
+        <div class="card"><div class="colh"><h2>${icon("x", 'style="color:#ff9b9f"')}ORIGINAL EXECUTION</h2><div class="row"><span class="st fail">Status: ${ra.success ? "success" : "failed"}</span><span class="muted mono" style="font-size:12px">${ms(latA)}</span></div></div>
+          <div style="padding:6px 0">${rows.map((r) => r.before == null ? `<div class="cstep empty">not in original</div>` : `<div class="cstep ${r.sid === rootSid ? "bad" : ""}"><div class="h"><span class="n">${nn(r.idx)}</span><b>${esc(stepName(r))}</b>${r.sid === rootSid ? `<span class="st root">Root cause</span>` : r.changed ? `<span class="st hit">Changed</span>` : `<span class="st ok">OK</span>`}</div>${r.changed ? `<div class="body">${esc(summarize(r.before))}</div>` : ""}</div>`).join("")}</div>
+          <div class="colh" style="border-top:1px solid var(--line);border-bottom:0"><span class="muted" style="font-size:13px">${icon("x", 'style="vertical-align:-3px"')} Result: ${esc(summarize(c.a.final))}</span></div></div>
+        <div class="card"><div class="colh"><h2>${icon("check", 'style="color:var(--green-2)"')}REPAIRED EXECUTION</h2><div class="row"><span class="st rep">Status: ${c.b.success ? "success ✓" : "failed"}</span><span class="muted mono" style="font-size:12px">${ms(latB)} re-executed</span></div></div>
+          <div style="padding:6px 0">${rows.map((r) => r.after == null ? `<div class="cstep empty">removed in replay</div>` : `<div class="cstep ${r.changed && !r.reused ? "good" : ""}"><div class="h"><span class="n">${nn(r.idx)}</span><b>${esc(stepName(r))}</b>${r.reused ? `<span class="st reused">Reused [checkpoint]</span>` : r.status === "added" ? `<span class="st rerun">New path</span>` : r.changed ? `<span class="st rep">${r.sid === c.b.fork_sid ? "Patched & success" : "Re-executed · changed"}</span>` : `<span class="st rerun">Re-executed · same</span>`}</div>${r.changed && !r.reused ? `<div class="body">${esc(summarize(r.after))}</div>` : ""}</div>`).join("")}</div>
+          <div class="colh" style="border-top:1px solid var(--line);border-bottom:0"><span class="muted" style="font-size:13px">${icon("check", 'style="vertical-align:-3px"')} Result: ${esc(summarize(c.b.final))} · expected ${esc(summarize(c.expected))}</span></div></div>
+      </div>` : `<div class="card mt"><div class="wrap"><table><thead><tr><th>#</th><th>Step</th><th>Original</th><th>Repaired</th><th>Status</th></tr></thead><tbody>${rows.map((r) => `<tr><td class="muted mono">${nn(r.idx)}</td><td class="t1">${esc(stepName(r))}</td><td class="mono" style="font-size:12px;color:${r.changed ? "#ff9b9f" : "var(--muted)"}">${esc(summarize(r.before))}</td><td class="mono" style="font-size:12px;color:${r.changed && !r.reused ? "var(--green-2)" : "var(--muted)"}">${r.reused ? "↩ same (reused)" : esc(summarize(r.after))}</td><td>${r.reused ? `<span class="st reused">Reused</span>` : r.status === "added" ? `<span class="st rerun">Added</span>` : r.status === "removed" ? `<span class="st hit">Removed</span>` : r.changed ? `<span class="st rep">Changed</span>` : `<span class="st rerun">Same</span>`}</td></tr>`).join("")}</tbody></table></div></div>`}
+      <div class="card mt"><div class="hd"><div class="row"><span style="color:var(--indigo-3)">${icon("ff")}</span><h2>LATENCY WATERFALL & CHECKPOINT REUSE</h2></div><span class="legend"><span><i style="background:#2a4b8c"></i>original</span><span><i style="background:#b4232a"></i>root cause</span><span><i style="background:#2b3342"></i>reused</span><span><i style="background:#5b54f0"></i>re-executed</span></span></div><div class="bd">
+        <div class="wf"><span>${rid(a)}</span><div class="bar">${ra.steps.map((s) => `<i class="${s.sid === rootSid ? "x" : "o"}" style="width:${(s.latency_ms / Math.max(latA, 1)) * 100}%" title="${esc(stepName(s))} · ${ms(s.latency_ms)}">${s.latency_ms / Math.max(latA, 1) > 0.08 ? esc(stepName(s).replace("Decide · ", "")) : ""}</i>`).join("")}</div><b class="t1 mono">${ms(latA)}</b></div>
+        <div class="wf"><span class="t1">${rid(b)}</span><div class="bar">${rb.steps.map((s) => `<i class="${s.reused ? "u" : "r"}" style="width:${(s.latency_ms / Math.max(latA, 1)) * 100}%" title="${esc(stepName(s))} · ${s.reused ? "reused (0 ms)" : ms(s.latency_ms)}">${s.latency_ms / Math.max(latA, 1) > 0.08 ? (s.reused ? "reused" : esc(stepName(s).replace("Decide · ", ""))) : ""}</i>`).join("")}</div><b class="t1 mono">${ms(latB)}</b></div>
+        <div class="muted" style="font-size:12.5px">Reused segments are drawn at their original length but cost nothing to replay; only the indigo segments were executed again.</div>
+      </div></div>`;
+    $$("#vp button").forEach((x) => (x.onclick = () => { vp = x.dataset.v; draw(); }));
+  };
+  draw();
 }
 
-// ------------------------------------------------------------------ EVALUATION
+// ================================================================== EVALUATION
 async function evalView() {
   const [m, info] = await Promise.all([api("/api/metrics"), INFO || api("/api/info")]);
-  const L = m.localization, cf = m.counterfactual || {}, v2 = m.version === "v2-graph";
-  const K = MAIN(L);
-  const SPL = v2 ? [["test", "Seen faults"], ["heldout", "Unseen fault types"], ["drift_loc", "Error source moved"], ["drift_topo", "New agent behaviour"]]
-                 : [["test", "Seen faults"], ["heldout", "Unseen fault types"]];
-  const names = v2 ? { gnn: "Graph neural network (production)", gbm: "Gradient boosting + hand-made lineage features", pagerank: "Personalized PageRank (no training)", first_suspicious: "Rule: first suspicious step", random: "Random step" }
-                   : { model: "Black Box model", first_suspicious: "Rule: first suspicious step", max_anomaly: "Highest-anomaly step", last_step: "Last step", random: "Random step" };
+  const L = m.localization, cf = m.counterfactual || {}, v2 = m.version === "v2-graph", K = MAIN(L);
+  const SPL = v2 ? [["test", "Seen faults"], ["heldout", "Unseen fault types"], ["drift_loc", "Error source moved"], ["drift_topo", "New agent behaviour"]] : [["test", "Seen faults"], ["heldout", "Unseen fault types"]];
+  const names = v2 ? { gnn: "Graph neural network (production)", gbm: "Gradient boosting + lineage features", pagerank: "Personalized PageRank (no training)", first_suspicious: "Rule: first suspicious step", random: "Random step" }
+    : { model: "Black Box model", first_suspicious: "Rule: first suspicious step", max_anomaly: "Highest-anomaly step", last_step: "Last step", random: "Random step" };
   const bt = Object.entries(m.by_fault_type).sort((x, y) => (x[1].heldout - y[1].heldout) || (y[1].top1 - x[1].top1));
-  view().innerHTML = `<h1>Evaluation</h1><div class="sub">Does the loop actually work? Numbers are read from <code>data/metrics.json</code>, produced by <code>python -m blackbox.cli all</code> on runs never used for training.${v2 ? " Traces come from a dynamic tool-calling agent via OpenTelemetry, so every run has its own graph shape." : ""}</div>
-    <div class="mb">${loop({ detect: "done", explain: "done", replay: "done", repair: "done", verify: "done" })}</div>
-    <div class="metrics mb">
-      ${SPL.map(([k, l]) => `<div class="metric"><div class="cap">EXPLAIN · ${l.toUpperCase()}</div><div class="v blue">${pct(L[k][K].top1, 1)}</div><div class="s">top-3 ${pct(L[k][K].top3, 1)} · n=${L[k][K].n}</div></div>`).join("")}
-      <div class="metric"><div class="cap">REPAIR · TOP-1 FIXES</div><div class="v green">${pct(cf.confirm_top1, 1)}</div><div class="s">repairing #1 suspect</div></div>
-      <div class="metric"><div class="cap">VERIFY · FIXED ≤ 3 REPLAYS</div><div class="v green">${pct(cf.fixed_within_3, 1)}</div><div class="s">avg ${cf.avg_replays?.toFixed(2)} replays</div></div>
-    </div>
-    <div class="panel"><div class="hd"><h2>Root-cause localization · top-1 (top-3)</h2><span class="muted mono" style="font-size:11px">DETECT · run-failure AUC ${m.run_failure_auc.toFixed(3)}</span></div><div class="tablewrap"><table>
+  view().innerHTML = `<h1>Evaluation</h1><div class="sub">All numbers are read from <code>data/metrics.json</code>, produced by <code>python -m blackbox.cli all</code> on runs never used for training.</div>
+    <div class="kpis mb" style="grid-template-columns:repeat(${SPL.length + 2},1fr)">
+      ${SPL.map(([k, l]) => `<div class="kpi"><div class="cap">${l}</div><div class="v" style="color:var(--indigo-3);font-size:22px">${pct(L[k][K].top1, 1)}</div><div class="muted" style="font-size:12px">top-1 · top-3 ${pct(L[k][K].top3, 1)} · n=${L[k][K].n}</div></div>`).join("")}
+      <div class="kpi"><div class="cap">Fixed by #1 suspect</div><div class="v" style="color:var(--green-2);font-size:22px">${pct(cf.confirm_top1, 1)}</div></div>
+      <div class="kpi"><div class="cap">Fixed ≤ 3 replays</div><div class="v" style="color:var(--green-2);font-size:22px">${pct(cf.fixed_within_3, 1)}</div></div></div>
+    <div class="card"><div class="hd"><h2>Root-cause localization · top-1 (top-3)</h2><span class="muted mono" style="font-size:12px">run-failure AUC ${m.run_failure_auc.toFixed(3)}</span></div><div class="wrap"><table>
       <thead><tr><th>Method</th>${SPL.map(([, l]) => `<th class="num">${l}</th>`).join("")}</tr></thead>
-      <tbody>${Object.keys(names).filter((k) => L.test[k]).map((k) => `<tr ${k === K ? 'style="background:var(--blue-t)"' : ""}><td>${k === K ? `<b class="t1">${names[k]}</b>` : names[k]}</td>${SPL.map(([sp]) => `<td class="num">${pct(L[sp][k].top1, 1)} <span class="dim">(${pct(L[sp][k].top3)})</span></td>`).join("")}</tr>`).join("")}</tbody></table></div>
-      <div class="bd muted" style="font-size:12px">${v2 ? "<b>Error source moved</b>: training fault types injected at later occurrences than any training example. <b>New agent behaviour</b>: a different policy (other ordering, extra verification calls), i.e. graph shapes never seen in training. The GNN only sees per-step facts and learns propagation along trace edges; it is best or tied on 3 of 4 splits, gradient boosting is slightly ahead when the error source moves." : ""}</div></div>
+      <tbody>${Object.keys(names).filter((k) => L.test[k]).map((k) => `<tr ${k === K ? 'style="background:var(--indigo-t)"' : ""}><td>${k === K ? `<b class="t1">${names[k]}</b>` : names[k]}</td>${SPL.map(([sp]) => `<td class="num">${pct(L[sp][k].top1, 1)} <span class="dim">(${pct(L[sp][k].top3)})</span></td>`).join("")}</tr>`).join("")}</tbody></table></div>
+      ${v2 ? `<div class="bd muted" style="font-size:13px"><b class="t1">Error source moved:</b> training fault types injected at locations never faulted in training. <b class="t1">New agent behaviour:</b> a different policy, so graph shapes never seen in training. The GNN is best or tied on 3 of 4 splits; gradient boosting is slightly ahead when the error source moves.</div>` : ""}</div>
     <div class="grid g2 mt">
-      <div class="panel"><div class="hd"><h2>Top-1 by failure type</h2><span class="legend"><span><i style="background:var(--blue)"></i>seen</span><span><i style="background:var(--amber)"></i>never seen</span></span></div><div class="bd">
-        ${bt.map(([k, v]) => `<div class="hbar" title="${esc(v.desc)}"><span class="mono" style="font-size:12px">${esc(k)}</span><div class="bar ${v.heldout ? "" : "blue"}"><i style="width:${v.top1 * 100}%"></i></div><b>${pct(v.top1)}</b></div>`).join("")}</div></div>
-      <div class="panel"><div class="hd"><h2>Replay · reuse instead of re-running</h2></div><div class="bd">
-        ${v2 ? `<div class="hbar"><span>Steps per repaired run</span><div class="bar red"><i style="width:100%"></i></div><b>${cf.avg_steps?.toFixed(1)}</b></div>
-        <div class="hbar"><span class="t1">Re-executed by Black Box</span><div class="bar blue"><i style="width:${(cf.reexec_ratio || 0) * 100}%"></i></div><b>${cf.avg_reexec?.toFixed(1)}</b></div>
-        <div class="hbar"><span>Reused (checkpoint + recorded tool calls)</span><div class="bar slate"><i style="width:${(1 - (cf.reexec_ratio || 0)) * 100}%"></i></div><b>${cf.avg_reused?.toFixed(1)}</b></div>
-        <div class="muted mt" style="font-size:12px">After a repair the agent re-plans and may take a different path; tool calls with unchanged inputs are served from the recording.</div>`
-        : `<div class="hbar"><span>Full re-run</span><div class="bar red"><i style="width:100%"></i></div><b>${cf.avg_steps?.toFixed(1)}</b></div><div class="hbar"><span class="t1">Black Box replay</span><div class="bar blue"><i style="width:${(cf.reexec_ratio || 0) * 100}%"></i></div><b>${cf.avg_reexec?.toFixed(1)}</b></div>`}
-        <div class="cap mt2">METHODOLOGY</div>
-        <div class="mt" style="font-size:12.5px">${num(m.corpus.runs)} runs (${num(m.corpus.steps)} steps), one fault per faulty run.</div>
-        <div class="mt"><span class="cap">TRAINING</span> <span class="chips mt">${info.train_faults.map((f) => `<span class="chip">${f}</span>`).join("")}</span></div>
-        <div class="mt"><span class="cap">HELD-OUT</span> <span class="chips mt">${info.heldout_faults.map((f) => `<span class="chip root">${f}</span>`).join("")}</span></div></div></div>
+      <div class="card"><div class="hd"><h2>Top-1 by failure type</h2><span class="legend"><span><i style="background:var(--indigo-2)"></i>seen</span><span><i style="background:var(--amber)"></i>never seen</span></span></div><div class="bd">
+        ${bt.map(([k, v]) => `<div class="hbar" title="${esc(v.desc)}"><span class="mono" style="font-size:12.5px">${esc(k)}</span><div class="track"><i class="${v.heldout ? "amber" : ""}" style="width:${v.top1 * 100}%"></i></div><b>${pct(v.top1)}</b></div>`).join("")}</div></div>
+      <div class="card"><div class="hd"><h2>Replay · reuse instead of re-running</h2></div><div class="bd">
+        <div class="hbar"><span>Steps per repaired run</span><div class="track"><i class="gray" style="width:100%"></i></div><b>${cf.avg_steps?.toFixed(1)}</b></div>
+        <div class="hbar"><span class="t1">Re-executed by Black Box</span><div class="track"><i style="width:${(cf.reexec_ratio || 0) * 100}%"></i></div><b>${cf.avg_reexec?.toFixed(1)}</b></div>
+        ${cf.avg_reused != null ? `<div class="hbar"><span>Reused from recording</span><div class="track"><i class="green" style="width:${(1 - (cf.reexec_ratio || 0)) * 100}%"></i></div><b>${cf.avg_reused?.toFixed(1)}</b></div>` : ""}
+        <div class="cap mt2">Methodology</div><div class="mt" style="font-size:13.5px">${num(m.corpus.runs)} runs (${num(m.corpus.steps)} steps), one injected fault per faulty run. Features come only from the observable trace; labels are never shown to the model.</div>
+        <div class="row mt"><span class="cap">Training</span>${info.train_faults.map((f) => `<span class="chip">${f}</span>`).join("")}</div>
+        <div class="row mt"><span class="cap">Held-out</span>${info.heldout_faults.map((f) => `<span class="chip" style="color:var(--amber-2)">${f}</span>`).join("")}</div></div></div>
     </div>`;
 }
 
-// ------------------------------------------------------------------ LIVE DEMO (guided loop)
+// ================================================================== LIVE DEMO
 async function demoView() {
   const S = {};
-  const STEPS = [
-    ["Run agent", "detect"], ["Agent fails", "detect"], ["Black Box detects failure", "detect"], ["Root cause identified", "explain"], ["Why it was flagged", "explain"],
-    ["Replay from checkpoint", "replay"], ["Patch applied", "repair"], ["Only affected steps re-executed", "repair"], ["Original vs repaired", "verify"], ["Repair verified", "verify"],
-  ];
+  const STEPS = [["Run the agent", "detect"], ["Agent fails", "detect"], ["Black Box detects the failure", "detect"], ["Root cause identified", "explain"], ["Why it was flagged", "explain"],
+    ["Replay from checkpoint", "replay"], ["Patch applied", "repair"], ["Only affected steps re-executed", "repair"], ["Original vs repaired", "verify"], ["Repair verified", "verify"]];
   let i = 0, auto = false, busy = false;
   const cards = [];
+  const evHtml = (rc) => rc.evidence.map((e, k) => `<div class="ev ${["upstream_clean", "downstream_impact"].includes(e.signal) ? "ctx" : ""}"><span class="num">${k + 1}</span><div><b>${esc(e.label)}</b><div>${esc(e.text)}</div></div></div>`).join("");
   const actions = [
     async () => { const r = await api("/api/demo/killer", { method: "POST" }); S.id = r.run_id; S.run = await api(`/api/runs/${S.id}`);
-      return `<div class="t1" style="font-size:14px">${esc(S.run.question)}</div><div class="row mt">${agentBadge(S.run)}<span class="b blue">OPENTELEMETRY TRACE · ${S.run.n_steps} SPANS</span></div>
-        <div class="muted mt" style="font-size:12px">The agent decides every tool call itself (search hotel, FX, flights, calculator, final answer). Each decision and tool call is an OpenTelemetry span; data-flow links become graph edges.</div>`; },
-    async () => `<div class="outc"><div class="o"><div class="cap">AGENT ANSWER</div><div class="val" style="color:var(--red-2)">${money(S.run.final.total_usd)}</div><div class="muted">says ${S.run.final.within_budget ? "within" : "over"} budget</div></div><div class="muted" style="text-align:center">≠</div>
-      <div class="o"><div class="cap">TASK CHECK EXPECTS</div><div class="val">${money(S.run.expected.total_usd)}</div><div class="muted">${S.run.expected.within_budget ? "within" : "over"} budget</div></div></div>`,
-    async () => { S.dx = await api(`/api/runs/${S.id}/diagnosis`);
-      return `<div class="row"><span class="b fail">TASK CHECK FAILED</span><span class="muted">Failure risk from the trace alone: <b class="t1 mono">${pct(S.dx.p_fail)}</b> · ${S.dx.steps.filter((s) => s.suspicious).length} step(s) carry anomaly signals.</span></div>`; },
-    async () => { const rc = S.dx.root_cause, s = S.run.steps.find((x) => x.sid === rc.sid); S.rc = rc;
-      return `<div class="row"><span class="mono t1" style="font-size:16px">Step ${String(s.idx + 1).padStart(2, "0")} · ${esc(rc.sid)}</span>${kind(rc.kind)}<span class="muted mono" style="font-size:11px">${esc(rc.name)}</span></div><div class="mt" style="max-width:520px">${confLine(rc.score)}</div>`; },
-    async () => `${evidenceHtml(S.rc)}<div class="row mt"><span class="b ${S.dx.upstream.healthy ? "ok" : "fail"}">UPSTREAM ${S.dx.upstream.healthy ? "HEALTHY" : "ANOMALOUS"}</span><span class="b fail">${S.dx.impacted.length} DOWNSTREAM STEPS AFFECTED</span></div>`,
-    async () => { const re = descendants(S.run.steps, S.rc.sid);
-      return `<div class="versus"><div class="vrow"><span class="lb">FULL EXECUTION</span><span class="cells">${S.run.steps.map(() => `<i class="full"></i>`).join("")}</span><span class="num">${S.run.steps.length} steps</span></div>
-        <div class="vrow"><span class="lb" style="color:var(--blue-2)">BLACK BOX REPLAY</span><span class="cells">${S.run.steps.map((s) => `<i class="${re.has(s.sid) ? "re" : "us"}" title="${esc(s.sid)}"></i>`).join("")}</span><span class="num">${re.size} re-run · ${S.run.steps.length - re.size} reused</span></div></div>
-        <div class="muted mt" style="font-size:12px">Checkpoint at <b class="mono">${esc(S.rc.sid)}</b>: unaffected steps are restored from the recording, not re-run.</div>`; },
-    async () => { S.patch = await api(`/api/demo/patch/${S.id}`); const cur = S.run.steps.find((x) => x.sid === S.patch.sid).output;
-      if (S.patch.mode === "repair") return `<div class="cap">ROOT CAUSE · ${esc(S.patch.sid)}</div><div class="mt">Repair: <span class="mono t1">${esc(S.patch.source)}</span></div><div class="muted mt" style="font-size:12px">The agent then continues on its own from the restored checkpoint.</div>`;
-      const flat = (o) => (o && o.args ? { ...o.args } : o);
-      return `<div class="cap">ROOT CAUSE · ${esc(S.patch.sid)}</div>${diffFields(flat(cur), flat(S.patch.patch)).map(([k, a, b]) => `<div class="diffline"><span class="muted">${esc(k)}</span><span class="from">${esc(JSON.stringify(a))}</span><span class="dim">→</span><span class="to">${esc(JSON.stringify(b))}</span></div>`).join("")}
-        <div class="muted mt" style="font-size:12px">Fix derived from the retrieved page: <span class="mono t1">"${esc(S.patch.source)}"</span></div>`; },
+      return `<div class="t1" style="font-size:15px">${esc(S.run.question)}</div><div class="row mt"><span class="st ${S.run.agent === "react-slm" ? "rep" : "ghost"}">${esc(agentName(S.run))}</span><span class="st rerun">OpenTelemetry trace · ${S.run.n_steps} spans</span></div>${S.run.meta?.note ? `<div class="muted mt" style="font-size:12.5px">${esc(S.run.meta.note)}</div>` : ""}`; },
+    async () => `<div class="delta"><div class="o"><div class="cap">Agent answer</div><div class="val">${esc(summarize(S.run.final))}</div></div><div class="e"><div class="cap">Task check expects</div><div class="val">${esc(summarize(S.run.expected))}</div></div></div>`,
+    async () => { S.dx = await api(`/api/runs/${S.id}/diagnosis`); return `<div class="row"><span class="st fail">Task check failed</span><span class="muted">failure risk from the trace alone: <b class="t1">${pct(S.dx.p_fail)}</b> · ${S.dx.steps.filter((s) => s.suspicious).length} step(s) carry anomaly signals</span></div>`; },
+    async () => { S.rc = S.dx.root_cause; const s = S.run.steps.find((x) => x.sid === S.rc.sid); return `<div class="rcd"><div class="top2"><span class="lbl">${icon("alert")}LIKELY ROOT CAUSE DETECTED</span><span class="conf">${pct(S.rc.score, 1)} confidence</span></div><h2>Step ${nn(s.idx)} — ${esc(stepName(s))}</h2></div>`; },
+    async () => { const d = S.rc.evidence.find((e) => e.expected || e.observed); return `${d ? `<div class="delta"><div class="e"><div class="cap">✓ Expected</div><div class="val">${esc(d.expected || "—")}</div></div><div class="o"><div class="cap">✕ Observed</div><div class="val">${esc(d.observed || "—")}</div></div></div>` : ""}${evHtml(S.rc)}`; },
+    async () => { const re = descendants(S.run.steps, S.rc.sid); return `<div class="ratio"><div class="ru" style="width:${((S.run.steps.length - re.size) / S.run.steps.length) * 100}%">${S.run.steps.length - re.size} REUSED</div><div class="rx" style="width:${(re.size / S.run.steps.length) * 100}%">${re.size} RE-RUN</div></div><div class="muted mt" style="font-size:13px">Checkpoint restored at <b class="t1">${esc(S.rc.sid)}</b>; unaffected steps come straight from the recording.</div>`; },
+    async () => { S.patch = await api(`/api/demo/patch/${S.id}`); if (S.patch.mode === "repair") return `<div class="row"><span class="st rerun">Re-run fresh</span><span class="mono t1" style="font-size:13px">${esc(S.patch.source)}</span></div>`;
+      const cur = S.run.steps.find((x) => x.sid === S.patch.sid).output; return `${diffFields(cur, S.patch.patch).map(([k, a, b]) => `<div class="row mono" style="font-size:13px"><span class="muted" style="width:110px">${esc(k)}</span><span style="color:#ff9b9f;text-decoration:line-through">${esc(JSON.stringify(a))}</span><span class="dim">→</span><span style="color:var(--green-2)">${esc(JSON.stringify(b))}</span></div>`).join("")}<div class="muted mt" style="font-size:12.5px">Fix derived from the trace: “${esc(S.patch.source)}”</div>`; },
     async () => { S.res = await api(`/api/runs/${S.id}/replay`, { method: "POST", body: JSON.stringify({ sid: S.patch.sid, mode: S.patch.mode, patch: S.patch.patch }) });
-      return `<div class="row"><span class="b blue">${S.res.n_reexecuted} RE-EXECUTED</span><span class="b slate">${S.res.n_reused} REUSED</span>${S.res.path_changed ? `<span class="b root nodot">AGENT TOOK A NEW PATH</span>` : ""}<span class="muted" style="font-size:12px">a full re-run would execute ${S.res.n_total}</span></div>
-        <div class="chips mt">${S.res.rerun.map((x) => `<span class="chip" style="border-color:var(--blue);color:var(--blue-2)">▶ ${esc(x)}</span>`).join("")}${S.run.steps.filter((s) => !S.res.rerun.includes(s.sid)).map((s) => `<span class="chip">↩ ${esc(s.sid)}</span>`).join("")}</div>`; },
-    async () => { S.cmp = await api(`/api/compare?a=${S.id}&b=${S.res.run_id}`);
-      return `<div class="muted" style="font-size:12px">Execution diverged at <b class="mono t1">${esc(S.cmp.first_divergence)}</b> · ${S.cmp.n_changed} steps changed</div>
-        ${S.cmp.rows.filter((r) => r.changed).map((r) => `<div class="diffline"><span class="mono">${esc(r.sid)}</span><span class="from">${esc(summarize(r.before))}</span><span class="dim">→</span><span class="to">${esc(summarize(r.after))}</span></div>`).join("")}`; },
-    async () => `<div class="verify panel ${S.res.verified ? "" : "no"}" style="border-radius:4px"><div class="bd"><div class="vh">${S.res.verified ? `${icon("verify")}REPAIR VERIFIED` : `${icon("x")}REPAIR NOT VERIFIED`}</div>
-      <div class="outc mt"><div class="o"><div class="cap">ORIGINAL</div><div class="mt">${st(false)}</div><div class="val">${esc(summarize(S.run.final))}</div></div><div class="muted" style="text-align:center">${icon("arrow")}</div>
-      <div class="o"><div class="cap">REPAIRED</div><div class="mt">${st(S.res.success)}</div><div class="val">${esc(summarize(S.res.final))}</div></div></div>
-      <div class="row mt"><a class="btn green" href="#/compare/${S.id}/${S.res.run_id}">${icon("compare")}Full comparison</a><a class="btn" href="#/investigate/${S.id}">Open investigation</a><span class="muted" style="font-size:12px">From failure to fix, without starting over: ${S.res.n_reexecuted} of ${S.res.n_total} steps re-run.</span></div></div></div>`,
+      return `<div class="row"><span class="st rerun">${S.res.n_reexecuted} re-executed</span><span class="st reused">${S.res.n_reused} reused</span>${S.res.path_changed ? `<span class="st warn">Agent took a new path</span>` : ""}<span class="muted" style="font-size:12.5px">a full re-run would execute ${S.res.n_total}</span></div>`; },
+    async () => { S.cmp = await api(`/api/compare?a=${S.id}&b=${S.res.run_id}`); return `<div class="muted" style="font-size:13px">Execution diverged at <b class="t1 mono">${esc(S.cmp.first_divergence)}</b> · ${S.cmp.n_changed} steps changed</div>${S.cmp.rows.filter((r) => r.changed).slice(0, 6).map((r) => `<div class="row mono mt" style="font-size:12.5px"><span class="t1" style="width:180px">${esc(stepName(r))}</span><span style="color:#ff9b9f">${esc(summarize(r.before))}</span><span class="dim">→</span><span style="color:var(--green-2)">${esc(summarize(r.after))}</span></div>`).join("")}`; },
+    async () => `<div class="banner ${S.res.verified ? "ok" : "bad"}"><span class="ic">${icon(S.res.verified ? "check" : "x")}</span><div class="sp"><div class="ttl">${S.res.verified ? "REPAIR VERIFIED" : "Repair not verified"} — <em>${esc(summarize(S.run.final))}</em> → <em>${esc(summarize(S.res.final))}</em></div><div class="muted" style="font-size:13px">From failure to fix without starting over: ${S.res.n_reexecuted} of ${S.res.n_total} steps re-run.</div></div><a class="btn primary" href="#/compare/${S.id}/${S.res.run_id}">Full comparison</a><a class="btn" href="#/investigate/${S.id}">Investigate</a></div>`,
   ];
   const render = () => {
-    const stage = {};
-    STEPS.forEach(([, k], j) => { if (j < i) stage[k] = "done"; });
-    if (i < STEPS.length) stage[STEPS[i][1]] = "now";
-    view().innerHTML = `<div class="row mb"><div><h1>Live demo</h1><div class="sub" style="margin-bottom:0">A real agent run fails; Black Box detects, explains, replays, repairs and verifies. Every step calls the live backend.</div></div><span class="sp"></span>
-        ${i === 0 && !busy ? `<button class="btn" id="all">Run all</button><button class="btn primary" id="next">${icon("demo")}Start demo</button>`
-          : i < STEPS.length ? `<button class="btn" id="all" ${busy ? "disabled" : ""}>${auto ? "Running…" : "Run all"}</button><button class="btn primary" id="next" ${busy ? "disabled" : ""}>${busy ? '<span class="spin"></span>' : "Next step →"}</button>`
-          : `<button class="btn primary" id="restart">${icon("replay")}Restart demo</button>`}</div>
-      <div class="mb">${loop(stage)}</div>
-      <div class="demo">
-        <div class="panel"><ul class="dsteps">${STEPS.map(([t], j) => `<li class="${j < i ? "done" : j === i ? "now" : ""}"><span class="n">${j < i ? "✓" : j + 1}</span><span>${t}</span></li>`).join("")}</ul></div>
-        <div id="cards">${cards.length ? cards.join("") : `<div class="panel">${empty("READY", "Press <b>Start demo</b>. A tool-calling travel agent will estimate a trip and get it wrong; then watch the loop.")}</div>
-          <div class="panel mt"><div class="hd"><h2>Or record your own execution</h2><span class="muted mono" style="font-size:11px">${INFO?.llm?.slm_available ? `SLM ${esc(INFO.llm.slm)} ready` : "SLM not running · benchmark policy available"}</span></div><div class="bd row">
-            <select id="ra">${(INFO?.agents || []).filter((a) => a.name.startsWith("react")).map((a) => `<option value="${a.name}" ${!a.available ? "disabled" : ""}>${esc(a.label)}${a.available ? "" : " (not running)"}</option>`).join("")}</select>
-            <select id="rf"><option value="">no injected fault</option>${(INFO?.train_faults || []).concat(INFO?.heldout_faults || []).map((f) => `<option value="${f}">${f}${(INFO.heldout_faults || []).includes(f) ? " (unseen)" : ""}</option>`).join("")}</select>
-            <button class="btn" id="rgo">Run &amp; investigate</button></div></div>`}</div>
+    view().innerHTML = `<div class="row mb"><div><h1>Live Demo</h1><div class="sub" style="margin:4px 0 0">${INFO?.llm?.slm_available ? `A real model (${esc(INFO.llm.slm)}) drives the agent.` : "The benchmark agent drives the run (no real model configured here)."} Every step below calls the live backend.</div></div><span class="sp"></span>
+        ${i >= STEPS.length ? `<button class="btn primary" id="restart">${icon("replay")}Restart</button>` : `<button class="btn" id="all" ${busy ? "disabled" : ""}>${auto ? "Running…" : "Run all"}</button><button class="btn primary" id="next" ${busy ? "disabled" : ""}>${busy ? `<span class="spin"></span>` : i === 0 ? `${icon("demo")}Start demo` : "Next step →"}</button>`}</div>
+      <div class="grid" style="grid-template-columns:300px minmax(0,1fr);align-items:start">
+        <div class="card" style="position:sticky;top:76px"><ul class="dlist">${STEPS.map(([t, st], j) => `<li class="${j < i ? "done" : j === i ? "now" : ""}"><span class="n">${j < i ? "✓" : j + 1}</span><span>${t}<div class="dim mono" style="font-size:10.5px">${st.toUpperCase()}</div></span></li>`).join("")}</ul></div>
+        <div id="cards">${cards.length ? cards.join("") : `<div class="card">${empty("READY", "Press <b>Start demo</b>: a tool-calling travel agent estimates a trip, a tool returns bad data, and the run fails. Then watch Black Box detect, explain, replay, repair and verify.")}</div>`}</div>
       </div>`;
     const n = $("#next"); if (n) n.onclick = next;
     const a = $("#all"); if (a) a.onclick = runAll;
     const r = $("#restart"); if (r) r.onclick = () => { i = 0; cards.length = 0; Object.keys(S).forEach((k) => delete S[k]); render(); };
-    const rg = $("#rgo"); if (rg) rg.onclick = async () => {
-      rg.disabled = true; rg.innerHTML = '<span class="spin"></span> Running…';
-      try { const x = await api("/api/agent/run", { method: "POST", body: JSON.stringify({ agent: $("#ra").value, fault_type: $("#rf").value || null }) }); go(`/investigate/${x.run_id}`); }
-      catch (e) { toast(e.message); rg.disabled = false; rg.textContent = "Run & investigate"; }
-    };
   };
   async function next() {
     if (busy || i >= STEPS.length) return;
     busy = true; render();
-    try {
-      const html = await actions[i]();
-      cards.push(`<div class="dcard"><div class="dh"><span class="n">STEP ${String(i + 1).padStart(2, "0")} · ${STEPS[i][1].toUpperCase()}</span><h2>${STEPS[i][0]}</h2></div>${html}</div>`);
-      i++;
-    } catch (e) {
-      cards.push(`<div class="errbox"><div class="t">STEP ${i + 1} FAILED${e.status ? ` · HTTP ${e.status}` : ""}</div><div class="mt">${esc(e.message)}</div></div>`); auto = false;
-    }
+    try { const html = await actions[i](); cards.push(`<div class="dcard"><div class="dh"><span class="cap">STEP ${nn(i)} · ${STEPS[i][1].toUpperCase()}</span><h3>${STEPS[i][0]}</h3></div>${html}</div>`); i++; }
+    catch (e) { cards.push(`<div class="errbox"><div class="t">STEP ${i + 1} FAILED${e.status ? ` · HTTP ${e.status}` : ""}</div><div class="mt">${esc(e.message)}</div></div>`); auto = false; }
     busy = false; render();
-    const last = $$("#cards > *").pop(); if (last) last.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    $$("#cards > *").pop()?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
-  async function runAll() { auto = true; while (auto && i < STEPS.length) { await next(); await new Promise((r) => setTimeout(r, 900)); } auto = false; render(); }
+  async function runAll() { auto = true; while (auto && i < STEPS.length) { await next(); await new Promise((r) => setTimeout(r, 700)); } auto = false; render(); }
   render();
 }
 
-// ------------------------------------------------------------------ ABOUT
+// ================================================================== HOW IT WORKS
 async function aboutView() {
-  view().innerHTML = `<h1>How Black Box works</h1><div class="sub">TRACE → RECORD → ANALYZE → LOCALIZE → EXPLAIN → CHECKPOINT → REPLAY → PATCH → COMPARE → VERIFY</div>
-    <div class="grid g2">${[["Record", "Every LLM call, retrieval and tool call is logged to an append-only SQLite recorder with arguments, output, timing, errors and data-flow parents. State at any step is the fold of recorded outputs, so it can be restored."],
-      ["Localize & explain", "A gradient-boosted model ranks steps using trace-only signals (grounding, baseline deviation, lineage, blast radius). Evidence is measured by removing signals and re-scoring."],
-      ["Replay & repair", "Re-execute only the checkpoint step and its descendants through the agent's real step functions; reuse everything else. Re-run fresh, patch the output, or patch the arguments."],
-      ["Compare & verify", "A step-aligned diff of original and repaired runs; the repair is verified when the task check passes."]].map(([t, d]) => `<div class="panel"><div class="bd"><h2>${t}</h2><div class="muted mt">${d}</div></div></div>`).join("")}</div>
-    <div class="panel mt"><div class="bd muted" style="font-size:12.5px">Scope: the model is trained on traces from the reference travel-expense agent (simulated and LLM variants). Any Python agent can be recorded through <code>blackbox.sdk</code>; replay requires an adapter that can re-invoke its steps.</div></div>`;
+  view().innerHTML = `<h1>How Black Box works</h1><div class="sub">Observability tells you what happened. Black Box is designed to turn it into an actionable debugging workflow.</div>
+    <div class="grid g3">${[["1 · Record", "trace", "Every model decision and tool call is an OpenTelemetry span (GenAI conventions). Parent spans give control flow; span links give data flow. Any instrumented agent can send OTLP traces to /api/otlp/v1/traces."],
+      ["2 · Localize", "graph", "A graph neural network passes messages along the trace graph using only per-step facts (grounding, deviation from history, errors) and ranks the likely root cause. It is evaluated on unseen fault types, moved error sources and new agent behaviour."],
+      ["3 · Explain", "eye", "Evidence comes from re-scoring with each signal removed, shown as expected vs observed values taken from the trace."],
+      ["4 · Replay", "replay", "State at any step is the fold of recorded outputs, so the checkpoint is restored without re-running anything before it."],
+      ["5 · Repair", "wand", "Re-run the step fresh, patch its output or its arguments. The agent continues on its own and may take a new path; unchanged tool calls are reused."],
+      ["6 · Verify", "shield", "The repaired run is judged against the task check and diffed step-by-step against the original."]].map(([t, ic, d]) => `<div class="card"><div class="bd"><div class="row"><span style="color:var(--indigo-3)">${icon(ic)}</span><h2>${t}</h2></div><p class="muted" style="margin:10px 0 0;font-size:13.5px;line-height:1.6">${d}</p></div></div>`).join("")}</div>
+    <div class="card mt"><div class="bd muted" style="font-size:13px">Scope: the model is trained and evaluated on one travel-expense workflow with injected faults. The live agent is a real model (Ollama locally, Groq when hosted) or the benchmark policy; each run is labelled with what drove it.</div></div>`;
 }
 
-// ------------------------------------------------------------------ boot
-(async () => {
-  try {
-    INFO = await api("/api/info");
-    $("#api-st").innerHTML = `<span class="dot ok"></span>RECORDER ONLINE`;
-    $("#llm-st").innerHTML = INFO.model_version === "v2"
-      ? `<span class="dot ${INFO.llm.slm_available ? "ok" : "warn"}"></span>MODEL · ${esc(INFO.llm.slm)}${INFO.llm.slm_provider ? " (" + esc(INFO.llm.slm_provider.toUpperCase()) + ")" : ""} ${INFO.llm.slm_available ? "READY" : "NOT RUNNING"}`
-      : `LLM · ${esc(INFO.llm.provider === "anthropic" ? INFO.llm.model : "OFFLINE MOCK")}`;
-  } catch (_) { $("#api-st").innerHTML = `<span class="dot hit"></span>API OFFLINE`; }
-  router();
-})();
+// ================================================================== boot
+(async () => { await refreshShell(); router(); })();

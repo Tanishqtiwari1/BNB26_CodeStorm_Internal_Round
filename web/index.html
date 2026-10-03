@@ -4,23 +4,26 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Black Box · AI Agent Flight Recorder</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='3' width='26' height='26' rx='6' fill='%23131517' stroke='%232b3038' stroke-width='1.5'/%3E%3Cline x1='8' y1='16' x2='24' y2='16' stroke='%233b82f6' stroke-width='1.5' stroke-dasharray='1 1'/%3E%3Ccircle cx='9' cy='16' r='2.5' fill='%2310b981'/%3E%3Ccircle cx='16' cy='16' r='2.5' fill='%23f59e0b'/%3E%3Ccircle cx='23' cy='16' r='2.5' fill='%23ef4444'/%3E%3Cpath d='M16 11V13.5' stroke='%23f59e0b' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
   <header class="top">
-    <a class="brand" href="#/"><span class="mark"><svg class="i" viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></span>BLACK BOX<small>AI AGENT FLIGHT RECORDER</small></a>
-    <span class="tag">From Failure to Fix — Without Starting Over.</span>
+    <a class="brand" href="#/">
+      <svg width="38" height="38" viewBox="0 0 32 32" fill="none"><rect x="3" y="3" width="26" height="26" rx="6" fill="#131517" stroke="#2b3038" stroke-width="1.5"/><line x1="8" y1="16" x2="24" y2="16" stroke="#3b82f6" stroke-width="1.5" stroke-dasharray="1 1"/><circle cx="9" cy="16" r="2.5" fill="#10b981"/><circle cx="16" cy="16" r="2.5" fill="#f59e0b"/><circle cx="23" cy="16" r="2.5" fill="#ef4444"/><path d="M16 11V13.5" stroke="#f59e0b" stroke-width="1.5" stroke-linecap="round"/></svg>
+      <div><b>BLACK BOX</b><span>AI Agent Flight Recorder</span></div>
+    </a>
+    <div class="search" id="search"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Search runs by id or task…<kbd>⌘K</kbd></div>
     <span class="sp"></span>
-    <span class="chip-st" id="api-st"><span class="dot"></span>CONNECTING</span>
-    <span class="chip-st hide-sm" id="llm-st">LLM —</span>
+    <span class="pill-st" id="rec"><span class="rec off"></span>Connecting…</span>
+    <span class="pill-st" id="model">Model —</span>
   </header>
   <div class="layout">
     <aside class="side">
-      <div class="grp">WORKFLOW</div>
       <nav class="nav" id="nav"></nav>
-      <div class="loopmini"><b>DETECT</b> → <b>EXPLAIN</b> → <b>REPLAY</b> → <b>REPAIR</b> → <b>VERIFY</b></div>
+      <div class="status" id="sidestatus">—</div>
     </aside>
     <main class="main" id="view"></main>
   </div>
