@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: blackbox-flight-recorder
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt && python -m blackbox.cli all
+    startCommand: uvicorn blackbox.api:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/info
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: BLACKBOX_LLM
+        value: auto
+      - key: ANTHROPIC_API_KEY
+        sync: false

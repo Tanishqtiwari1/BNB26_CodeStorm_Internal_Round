@@ -7,6 +7,4 @@ uvicorn[standard]
 anthropic>=1.0
 httpx
 pytest
-# optional legacy dashboard
-streamlit>=1.40
-plotly
+# legacy Streamlit dashboard (app.py) only: pip install streamlit plotly

@@ -31,6 +31,12 @@ AI AGENT FAILED → BLACK BOX FOUND WHERE → EXPLAINED WHY → REPLAYED FROM TH
 
 The **Live Demo** page walks through all ten steps against the live backend: run, fail, detect, root cause, why, checkpoint, patch, re-execute, compare, verify. The demo's patch value is read from the recorded retrieved document ("Standard room: 180 EUR"), not hard-coded.
 
+## Deploy (one click)
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Tanishqtiwari1/BNB26_CodeStorm_Internal_Round)
+
+`render.yaml` builds the benchmark and model during deploy (`python -m blackbox.cli all`) and serves the app with uvicorn. GitHub Pages can't host it, because the app needs a Python backend.
+
 ## Quick start
 
 ```bash
