@@ -12,6 +12,7 @@ modes
 Faults injected elsewhere in the run persist (we only change step k).
 Re-execution calls the agent's real step functions through its adapter.
 """
+import json
 import random
 import zlib
 
@@ -25,6 +26,9 @@ def fork(rec, run_id, sid, mode="repair", patch=None, save=True):
     run = rec.run(run_id)
     if run is None:
         raise KeyError(run_id)
+    if str(run.get("agent", "")).startswith("react"):
+        from . import replay_v2
+        return replay_v2.fork(rec, run_id, sid, mode, patch, save)
     if mode not in MODES:
         raise ValueError(f"mode must be one of {MODES}")
     if mode != "repair" and not isinstance(patch, dict):
@@ -64,7 +68,10 @@ def fork(rec, run_id, sid, mode="repair", patch=None, save=True):
 
 
 def diff(a, b):
-    """Align two executions step-by-step (by step id)."""
+    """Align two executions. Same plan -> by step id; dynamic traces whose shape
+    changed -> sequence alignment on (operation, arguments)."""
+    if [(s["sid"], s["name"]) for s in a] != [(s["sid"], s["name"]) for s in b] and any(s["kind"] == "input" for s in a):
+        return _diff_aligned(a, b)
     bb = {s["sid"]: s for s in b}
     rows, first = [], None
     for s in a:
@@ -91,3 +98,32 @@ def compare(rec, run_a, run_b):
              n_reused=sum(r["reused"] for r in d["rows"]),
              fixed=(not ra["success"]) and bool(rb["success"]))
     return d
+
+
+def _diff_aligned(a, b):
+    import difflib
+    sig = lambda s: (s["name"], json.dumps(s["args"] if s["kind"] not in ("llm", "final") else s["output"], sort_keys=True, default=str))
+    sm = difflib.SequenceMatcher(a=[sig(s) for s in a], b=[sig(s) for s in b], autojunk=False)
+    rows, first = [], None
+
+    def row(x, y, status):
+        nonlocal first
+        changed = x is None or y is None or x["output"] != y["output"] or x["args"] != y["args"]
+        if changed and first is None:
+            first = (y or x)["sid"]
+        ref = y or x
+        rows.append({"idx": ref["idx"], "sid": ref["sid"], "name": ref["name"], "kind": ref["kind"], "changed": changed,
+                     "reused": bool(y and y.get("reused")), "rerun": bool(y and not y.get("reused")), "status": status,
+                     "before": x["output"] if x else None, "after": y["output"] if y else None,
+                     "args_before": x["args"] if x else None, "args_after": y["args"] if y else None})
+    for op, i1, i2, j1, j2 in sm.get_opcodes():
+        if op == "equal":
+            for x, y in zip(a[i1:i2], b[j1:j2]):
+                row(x, y, "same")
+        else:
+            xs, ys = a[i1:i2], b[j1:j2]
+            for t in range(max(len(xs), len(ys))):
+                x = xs[t] if t < len(xs) else None
+                y = ys[t] if t < len(ys) else None
+                row(x, y, "changed" if x and y else ("added" if y else "removed"))
+    return {"rows": rows, "first_divergence": first, "n_changed": sum(r["changed"] for r in rows)}

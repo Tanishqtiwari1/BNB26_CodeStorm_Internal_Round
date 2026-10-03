@@ -12,7 +12,7 @@ NAMES = ["parse_task", "hotel_doc", "extract_rate", "fx_rate", "calc", "flight_p
          "db_lookup", "policy_check", "reflect", "final_answer"]
 KINDS = ["llm", "retrieval", "tool", "final"]
 NUM_KEYS = ("value", "rate", "usd", "amount", "total_usd")
-SKIP_ARGS = {"context", "question", "op", "model"}
+SKIP_ARGS = {"context", "question", "op", "model", "turn", "need"}
 
 
 def primary_value(out):
@@ -26,7 +26,7 @@ def primary_value(out):
 
 def norm_key(s):
     a = s["args"] if isinstance(s["args"], dict) else {}
-    if s["name"] in ("fx_rate", "flight_price", "db_lookup", "extract_rate"):
+    if s["name"] in ("fx_rate", "flight_price", "db_lookup", "extract_rate", "per_diem", "taxi_fare"):
         sig = ",".join(f"{k}={a[k]}" for k in sorted(a) if k not in SKIP_ARGS and not isinstance(a[k], (list, dict)))
         return f"{s['name']}|{sig}"
     return s["role"]
@@ -76,7 +76,7 @@ def _pool(s, by):
 
 
 # ------------------------------------------------------------------ norms
-def build_norms(runs_steps):
+def build_norms(runs_steps, floor=0.05):
     """runs_steps: iterable of step-lists from *successful training* runs."""
     vals, lat, doclen = defaultdict(list), defaultdict(list), []
     arg_hits = defaultdict(lambda: [0, 0])
@@ -97,7 +97,7 @@ def build_norms(runs_steps):
                 vals[norm_key(s)].append(lv)
                 vals["role:" + s["role"]].append(lv)
             lat[s["kind"]].append(s["latency_ms"])
-            if s["name"] == "hotel_doc":
+            if s["kind"] == "retrieval" and isinstance(s["output"], dict) and "text" in s["output"]:
                 doclen.append(len(s["output"].get("text", "")))
 
     def ms(xs, floor):
@@ -106,7 +106,7 @@ def build_norms(runs_steps):
         return (m, max(sd, floor), len(xs))
     literal = sorted(f"{n}.{k}" for (n, k), (h, t) in arg_hits.items() if t and h / t < 0.5)
     return {"literal_args": literal,
-            "vals": {k: ms(v, 0.05) for k, v in vals.items() if len(v) >= 2},
+            "vals": {k: ms(v, floor) for k, v in vals.items() if len(v) >= 2},
             "lat": {k: ms(v, 1.0) for k, v in lat.items()},
             "doclen": ms(doclen, 1.0) if doclen else (150, 20, 1)}
 
@@ -139,7 +139,7 @@ def signal_flags(d):
                       "text": "argument(s) not traceable to upstream outputs: " + ", ".join(map(str, d["ungrounded_args"]))})
     if d["out_grounding"] < 1:
         flags.append({"signal": "ungrounded_output", "severity": "high",
-                      "text": "output value(s) not present in the input: " + ", ".join(f"{x:g}" for x in d["ungrounded_out"])})
+                      "text": "output value(s) not present in the input: " + ", ".join(f"{x:g}" if isinstance(x, float) else str(x) for x in d["ungrounded_out"])})
     if d["null_fields"] > 0:
         flags.append({"signal": "null_fields", "severity": "high", "text": "empty field(s): " + ", ".join(d["null_paths"])})
     if d["retrieval_relevance"] < 1:
@@ -152,10 +152,30 @@ def signal_flags(d):
     return flags
 
 
+def _obs_values(x):
+    from .react_agent import _values
+    return _values(x)
+
+
+def _texts(x):
+    if isinstance(x, dict):
+        return [t for v in x.values() for t in _texts(v)]
+    if isinstance(x, list):
+        return [t for v in x for t in _texts(v)]
+    return [x] if isinstance(x, str) else []
+
+
+def _is_decision(s):
+    return s["name"].startswith("call:") or (s["kind"] == "final" and s["name"] == "final_answer" and "tool" not in s["output"]
+                                              and "total" not in s["args"])
+
+
 def step_signals(steps, norms):
     """First pass: local per-step signals + evidence details."""
     by = {s["sid"]: s for s in steps}
     sig = {}
+    react = any(s["kind"] == "input" for s in steps)
+    pool_n, pool_s, pool_t = set(), set(), []  # everything observed so far (task + tool outputs), for decision grounding
     for s in steps:
         d = {}
         v = primary_value(s["output"])
@@ -182,7 +202,15 @@ def step_signals(steps, norms):
         else:
             d["arg_grounding"], d["ungrounded_args"] = 1.0, []
         # output grounding for LLM steps: numbers must come from the prompt/context
-        if s["name"] in ("parse_task", "extract_rate"):
+        if react and _is_decision(s):
+            used = s["output"].get("args", {}) if s["name"].startswith("call:") else {"total_usd": s["output"].get("total_usd")}
+            un, us = _obs_values(used)
+            ung = [v for v in un if v not in (0.0, 1.0) and not any(abs(v - b) <= 1e-6 * max(1, abs(b)) for b in pool_n)]
+            ung += [v for v in us if not re.fullmatch(r"[\d.\s+\-*/()]+", v) and v not in pool_s
+                    and not any(v in t for t in pool_t)]
+            d["out_grounding"] = 1 - len(ung) / max(1, len(un) + len(us)) if (un or us) else 1.0
+            d["ungrounded_out"] = ung
+        elif s["name"] in ("parse_task", "extract_rate"):
             src = args.get("question") if s["name"] == "parse_task" else args.get("context")
             nums = _text_numbers(src)
             outn = [float(a) for a in _atoms(s["output"]) if isinstance(a, (int, float))]
@@ -193,9 +221,10 @@ def step_signals(steps, norms):
             d["out_grounding"], d["ungrounded_out"] = 1.0, []
         d["null_paths"] = list(_nulls(s["output"]))
         d["null_fields"] = float(len(d["null_paths"]))
-        if s["name"] == "hotel_doc":
+        if s["kind"] == "retrieval" and isinstance(s["output"], dict) and "text" in s["output"]:
             txt = s["output"].get("text", "")
-            d["retrieval_relevance"] = 1.0 if str(args.get("query", "")) in txt else 0.0
+            q = str(args.get("query") or args.get("hotel") or "")
+            d["retrieval_relevance"] = 1.0 if q in txt else 0.0
             d["doc_len_ratio"] = len(txt) / norms["doclen"][0]
             d["doc_len_z"] = min(abs(len(txt) - norms["doclen"][0]) / norms["doclen"][1], 50.0)
         else:
@@ -205,6 +234,11 @@ def step_signals(steps, norms):
         d["error"] = 1.0 if s["error"] else 0.0
         d["exception"] = 1.0 if s["error"] == "exception" else 0.0
         sig[s["sid"]] = derive(d)
+        if react and not _is_decision(s) and not s.get("error"):
+            n, st = _obs_values(s["output"])
+            pool_n |= n
+            pool_s |= st
+            pool_t.extend(_texts(s["output"]))
     return sig
 
 

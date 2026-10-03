@@ -7,4 +7,7 @@ uvicorn[standard]
 anthropic>=1.0
 httpx
 pytest
-# legacy Streamlit dashboard (app.py) only: pip install streamlit plotly
+opentelemetry-api
+opentelemetry-sdk
+# training the GNN additionally needs PyTorch:  pip install -r requirements-train.txt
+# legacy Streamlit dashboard (app.py) only:     pip install streamlit plotly

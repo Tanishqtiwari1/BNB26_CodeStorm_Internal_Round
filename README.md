@@ -31,6 +31,48 @@ AI AGENT FAILED → BLACK BOX FOUND WHERE → EXPLAINED WHY → REPLAYED FROM TH
 
 The **Live Demo** page walks through all ten steps against the live backend: run, fail, detect, root cause, why, checkpoint, patch, re-execute, compare, verify. The demo's patch value is read from the recorded retrieved document ("Standard room: 180 EUR"), not hard-coded.
 
+## v2: graph-based debugging of dynamic agents (branch `v2-graph`)
+
+The v1 agent followed a fixed plan, and its diagnosis model scored steps one at a time. v2 removes both assumptions.
+
+- **A real agent that decides its own steps.** A tool-calling loop where the next call (search hotel, FX, flights, per-diem, taxi, calculator, final answer) is chosen each turn:
+  - by a small language model through **Ollama**: `qwen2.5:7b` by default, configurable with `BLACKBOX_SLM`;
+  - or, for the large labelled benchmark, by a deterministic stochastic policy.
+
+  Order, retries, shared lookups and verification calls differ run to run, so **every trace has its own graph shape**.
+- **OpenTelemetry tracing.** Every decision and tool call is an OTel span using the GenAI semantic conventions (`gen_ai.operation.name`, `gen_ai.tool.name`, `gen_ai.request.model`).
+  - Control flow comes from span parents; data flow from span links, found by tracing which earlier observation produced each value the model used.
+  - `POST /api/otlp/v1/traces` accepts OTLP/HTTP JSON from any instrumented agent.
+- **Graph neural network for root cause.** Directional message passing over the trace graph, using only per-step facts (grounding, baseline deviation, retrieval checks, errors, node type, degree). It learns how errors propagate, so it keeps working when the error source moves or the graph shape changes. It's trained with PyTorch; inference is plain NumPy.
+- **New drift evaluation:**
+  - **Error source moved:** training fault types injected at locations never faulted in training.
+  - **New agent behaviour:** a different policy, so graph shapes never seen in training.
+- **Dynamic replay.** Restore the checkpoint, patch or re-run the step, and **let the agent re-plan**. Tool calls with unchanged inputs are reused from the recording; new ones are executed. Comparison aligns traces of different shapes.
+
+### v2 results (5,000 dynamic-agent runs; top-1 root-cause localization on runs never used for training)
+
+| Method | Seen faults | Unseen fault types | Error source moved | New agent behaviour |
+|---|---|---|---|---|
+| **Graph neural network** | **93.1%** | **88.4%** | 86.2% | **93.5%** |
+| Gradient boosting + hand-made lineage features (v1 approach) | 89.6% | 86.5% | **88.4%** | 88.5% |
+| First-suspicious rule | 65.7% | 84.8% | 78.0% | 67.3% |
+| Personalized PageRank (no training) | 58.8% | 76.9% | 69.8% | 59.9% |
+| Random | 2.9% | 4.3% | 3.0% | 3.0% |
+
+- **Top-3:** the GNN finds the root cause within its top 3 for 96–100% of runs on every split.
+- **Verified repairs:** repairing the #1 suspect fixes **90.9%** of failures, and **98.1%** within 3 replays.
+- **Replay cost:** a replay re-executes **34%** of steps on average.
+- **Run-failure detection:** AUC 0.745.
+
+### v2 commands
+```bash
+./.venv/bin/pip install -r requirements.txt -r requirements-train.txt   # + PyTorch for training
+./.venv/bin/python -m blackbox.cli all        # generate 5,000 dynamic runs → train GNN/GBM → evaluate → diagnose (~1 min)
+./.venv/bin/python -m blackbox.cli data       # regenerate data + diagnoses with the committed model (no PyTorch; used on Render)
+./.venv/bin/python -m blackbox.cli all-v1     # the original fixed-plan benchmark
+brew install ollama && ollama serve & ollama pull qwen2.5:7b   # real SLM for the live agent (optional)
+```
+
 ## Live app
 
 **https://blackbox-flight-recorder.onrender.com**  (free tier: the first load can take 30–60 s while the server wakes up)
@@ -47,7 +89,7 @@ The **Live Demo** page walks through all ten steps against the live backend: run
 python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
 ./.venv/bin/python -m blackbox.cli all              # generate 5,000 runs → train → evaluate → store diagnoses (~1 min)
 ./.venv/bin/uvicorn blackbox.api:app --port 8000    # API + web UI → http://localhost:8000
-./.venv/bin/python -m pytest -q                     # 20 end-to-end tests
+./.venv/bin/python -m pytest -q                     # 27 tests (v1 + v2)
 ```
 
 Optional, to make the reference agent call a real model:
