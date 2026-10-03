@@ -1,0 +1,149 @@
+{
+  "localization": {
+    "test": {
+      "model": {
+        "top1": 0.9396825396825397,
+        "top3": 0.9682539682539683,
+        "rr": 0.9563470193827337,
+        "n": 630
+      },
+      "first_suspicious": {
+        "top1": 0.8809523809523809,
+        "top3": 0.8984126984126984,
+        "rr": 0.8980390816593771,
+        "n": 630
+      },
+      "max_anomaly": {
+        "top1": 0.38095238095238093,
+        "top3": 0.4380952380952381,
+        "rr": 0.45330940481721305,
+        "n": 630
+      },
+      "last_step": {
+        "top1": 0.0,
+        "top3": 0.06031746031746032,
+        "rr": 0.1059587011919159,
+        "n": 630
+      },
+      "random": {
+        "top1": 0.047619047619047616,
+        "top3": 0.13333333333333333,
+        "rr": 0.1684624412352787,
+        "n": 630
+      }
+    },
+    "heldout": {
+      "model": {
+        "top1": 0.849624060150376,
+        "top3": 0.8766917293233083,
+        "rr": 0.8675339919224798,
+        "n": 665
+      },
+      "first_suspicious": {
+        "top1": 0.7879699248120301,
+        "top3": 0.8120300751879699,
+        "rr": 0.81603852916827,
+        "n": 665
+      },
+      "max_anomaly": {
+        "top1": 0.15789473684210525,
+        "top3": 0.17894736842105263,
+        "rr": 0.22683771118259616,
+        "n": 665
+      },
+      "last_step": {
+        "top1": 0.0,
+        "top3": 0.0,
+        "rr": 0.059132846982224554,
+        "n": 665
+      },
+      "random": {
+        "top1": 0.058646616541353384,
+        "top3": 0.15338345864661654,
+        "rr": 0.18240572773594813,
+        "n": 665
+      }
+    }
+  },
+  "by_fault_type": {
+    "hallucinated_value": {
+      "top1": 1.0,
+      "top3": 1.0,
+      "n": 110,
+      "heldout": false,
+      "desc": "LLM extracted a number that is not in its context"
+    },
+    "dropped_field": {
+      "top1": 1.0,
+      "top3": 1.0,
+      "n": 90,
+      "heldout": false,
+      "desc": "LLM parse silently dropped a required field"
+    },
+    "off_by_one": {
+      "top1": 0.7111913357400722,
+      "top3": 0.7111913357400722,
+      "n": 277,
+      "heldout": true,
+      "desc": "LLM parse produced a count off by one"
+    },
+    "stale_cache": {
+      "top1": 0.8442622950819673,
+      "top3": 0.9836065573770492,
+      "n": 122,
+      "heldout": true,
+      "desc": "Tool served a stale cached value"
+    },
+    "unit_mixup": {
+      "top1": 0.9590163934426229,
+      "top3": 0.9918032786885246,
+      "n": 122,
+      "heldout": false,
+      "desc": "Numeric output off by a unit factor (cents vs dollars)"
+    },
+    "irrelevant_retrieval": {
+      "top1": 1.0,
+      "top3": 1.0,
+      "n": 104,
+      "heldout": false,
+      "desc": "Retriever returned a document for the wrong entity"
+    },
+    "truncated_context": {
+      "top1": 0.9962406015037594,
+      "top3": 1.0,
+      "n": 266,
+      "heldout": true,
+      "desc": "Retrieved document truncated; key sentence missing"
+    },
+    "wrong_arg": {
+      "top1": 0.9361702127659575,
+      "top3": 0.9361702127659575,
+      "n": 94,
+      "heldout": false,
+      "desc": "Tool called with an argument that doesn't match upstream data"
+    },
+    "wrong_operation": {
+      "top1": 0.7545454545454545,
+      "top3": 0.8818181818181818,
+      "n": 110,
+      "heldout": false,
+      "desc": "Calculator used the wrong operation (add vs multiply)"
+    }
+  },
+  "run_failure_auc": 0.9042739374785707,
+  "counterfactual": {
+    "confirm_top1": 0.8934362934362934,
+    "fixed_within_3": 0.9212355212355212,
+    "avg_replays": 1.196138996138996,
+    "reexec_ratio": 0.4775824673853226,
+    "suffix_ratio": 0.7314751869476547,
+    "avg_steps": 23.854054054054053,
+    "avg_reexec": 11.392277992277993,
+    "avg_suffix": 17.44864864864865
+  },
+  "corpus": {
+    "runs": 5000,
+    "failed": 2771,
+    "steps": 122701
+  }
+}

@@ -1,4 +1,4 @@
-"""End-to-end tests: corpus, leakage, model, replay, patching, comparison, demo, API.
+"""v1 (fixed-plan agent) tests: corpus, leakage, model, replay, patching, comparison, SDK. v2 lives in test_v2.py.
 
     ./.venv/bin/python -m pytest -q
 """
@@ -11,7 +11,6 @@ import pytest
 os.environ["BLACKBOX_LLM"] = "mock"  # never call a real API from tests
 
 from blackbox import agent as A
-from blackbox import demo
 from blackbox import faults as F
 from blackbox import features as FT
 from blackbox import generate as G
@@ -179,20 +178,7 @@ def test_external_runs_are_diagnosable_not_replayable(tmp_path, corpus):
         RP.fork(t.rec, t.last_run_id, "lookup#1", "repair")
 
 
-# ---------------------------------------------------------------- real-agent demo
-def test_killer_demo_end_to_end(corpus):
-    rec, b = corpus["rec"], corpus["bundle"]
-    rid = demo.run_killer(rec)
-    run = rec.run(rid)
-    assert run["agent"] == "travel-llm" and not run["success"]
-    a = M.analyze(b, rec.steps(rid))
-    assert a["root_cause"]["sid"] == "L0.rate"
-    f = RP.fork(rec, rid, "L0.rate", "repair", save=False)
-    assert f["success"] and f["n_reexecuted"] == 8 and f["n_reused"] == 4
-    p = RP.fork(rec, rid, "L0.rate", "patch_output", {"amount": 180.0, "currency": "EUR"}, save=False)
-    assert p["success"]
-
-
+# ---------------------------------------------------------------- v1 LLM adapter
 def test_llm_agent_matches_sim_agent_when_clean():
     t = A.make_task(random.Random(21))
     sim = get_adapter("travel-sim").execute(t)
@@ -200,81 +186,3 @@ def test_llm_agent_matches_sim_agent_when_clean():
     assert sim[-1]["output"]["total_usd"] == llm[-1]["output"]["total_usd"]
 
 
-# ---------------------------------------------------------------- API
-@pytest.fixture(scope="module")
-def client(corpus):
-    from fastapi.testclient import TestClient
-    os.environ.update(BLACKBOX_DB=corpus["db"], BLACKBOX_MODEL=corpus["model"], BLACKBOX_METRICS=corpus["metrics_path"])
-    import blackbox.api as api
-    importlib.reload(api)
-    return TestClient(api.app)
-
-
-def test_api_flow(client):
-    assert client.get("/api/info").json()["llm"]["provider"] == "mock"
-    s = client.get("/api/stats").json()
-    assert s["runs"] > 0 and s["failed"] > 0
-    runs = client.get("/api/runs", params={"status": "failed", "limit": 5}).json()
-    assert runs["total"] > 0 and len(runs["runs"]) == 5
-    rid = client.post("/api/demo/killer").json()["run_id"]
-    run = client.get(f"/api/runs/{rid}").json()
-    assert run["replayable"] and run["label"]["fault_sid"] == "L0.rate"
-    assert len(client.get(f"/api/runs/{rid}/trace").json()["steps"]) == run["n_steps"]
-    dx = client.get(f"/api/runs/{rid}/diagnosis").json()
-    assert dx["root_cause"]["sid"] == "L0.rate" and dx["root_cause"]["evidence"]
-    ex = client.get(f"/api/runs/{rid}/steps/L0.rate/explanation").json()
-    assert ex["rank"] == 1
-    r = client.post(f"/api/runs/{rid}/replay", json={"sid": "L0.rate", "mode": "patch_output",
-                                                    "patch": {"amount": 180, "currency": "EUR"}}).json()
-    assert r["success"] and r["n_reexecuted"] == 8
-    r2 = client.post(f"/api/runs/{rid}/replay", json={"sid": "L0.rate", "mode": "patch_args",
-                                                     "patch": {"hotel": "Hotel Lumiere", "context": "Standard room: 180 EUR per night.", "model": "x"}}).json()
-    assert r2["success"]
-    c = client.get("/api/compare", params={"a": rid, "b": r["run_id"]}).json()
-    assert c["fixed"] and c["first_divergence"] == "L0.rate"
-    assert len(client.get(f"/api/runs/{rid}/forks").json()["runs"]) == 2
-    live = client.post("/api/agent/run", json={"agent": "travel-llm", "seed": 4, "fault_type": "stale_cache"}).json()
-    assert client.get(f"/api/runs/{live['run_id']}").json()["agent"] == "travel-llm"
-    assert "localization" in client.get("/api/metrics").json()
-
-
-def test_api_errors(client):
-    assert client.get("/api/runs/doesnotexist").status_code == 404
-    rid = client.post("/api/demo/killer").json()["run_id"]
-    assert client.post(f"/api/runs/{rid}/replay", json={"sid": "nope"}).status_code == 404
-    assert client.post(f"/api/runs/{rid}/replay", json={"sid": "L0.rate", "mode": "patch_output"}).status_code == 422
-    assert client.post("/api/agent/run", json={"fault_type": "bogus"}).status_code == 422
-
-
-# ---------------------------------------------------------------- USP loop: detect → explain → replay → repair → verify
-def test_usp_loop_metrics_are_real(client, corpus):
-    s0 = client.get("/api/stats").json()
-    rid = client.post("/api/demo/killer").json()["run_id"]
-    p = client.get(f"/api/demo/patch/{rid}").json()
-    assert p["patch"] == {"amount": 180.0, "currency": "EUR"} and "180 EUR" in p["source"]  # read from the recorded document
-    r = client.post(f"/api/runs/{rid}/replay", json={"sid": p["sid"], "mode": "patch_output", "patch": p["patch"]}).json()
-    assert r["verified"] and r["reexecution_error"] is None and "L0.rate" in r["changed"]
-    s1 = client.get("/api/stats").json()
-    assert s1["replay_attempts"] == s0["replay_attempts"] + 1
-    assert s1["repairs_verified"] == s0["repairs_verified"] + 1
-    assert s1["steps_avoided"] == s0["steps_avoided"] + r["n_reused"]
-    assert s1["failures_detected"] == s0["failures_detected"] + 1
-    assert 0 <= s1["root_causes_identified"] <= s1["failures_analyzed"] <= s1["failures_detected"]
-    reps = client.get("/api/replays", params={"limit": 5}).json()["runs"]
-    assert reps[0]["run_id"] == r["run_id"] and reps[0]["parent_success"] == 0 and reps[0]["success"] == 1
-
-
-def test_reexecution_error_is_reported(client):
-    rid = client.post("/api/demo/killer").json()["run_id"]
-    r = client.post(f"/api/runs/{rid}/replay", json={"sid": "L0.rate", "mode": "patch_output", "patch": {}}).json()
-    assert not r["verified"] and r["reexecution_error"]["sid"] == "L0.fx"
-    assert "currency" in r["reexecution_error"]["error"]
-
-
-def test_evidence_has_expected_and_observed(client):
-    rid = client.post("/api/demo/killer").json()["run_id"]
-    rc = client.get(f"/api/runs/{rid}/diagnosis").json()["root_cause"]
-    obs = {e["label"]: e for e in rc["evidence"]}
-    assert obs["Ungrounded output"]["observed"] == "245" and "180" in obs["Ungrounded output"]["expected"]
-    if "Value anomaly" in obs:  # needs a historical baseline for this hotel in the (small) test corpus
-        assert "historical baseline" in obs["Value anomaly"]["expected"]

@@ -10,6 +10,7 @@ import threading
 
 from . import demo
 from . import faults as F
+from . import faults_v2 as F2
 from . import llm
 from . import model as M
 from . import replay as RP
@@ -83,11 +84,28 @@ class Service:
         return out
 
     # ---------------------------------------------------------------- reads
+    def _v2(self):
+        return os.path.exists(self.model_path) and self.bundle.get("kind") == "v2"
+
     def info(self):
-        return {"llm": llm.describe(), "agents": [{"name": a.name, "label": a.label, "description": a.description}
-                                                  for a in ADAPTERS.values()],
-                "train_faults": F.TRAIN_FAULTS, "heldout_faults": F.HELDOUT_FAULTS,
-                "fault_descriptions": F.DESCRIPTIONS, "model_ready": os.path.exists(self.model_path)}
+        from .react_agent import OllamaPolicy
+        slm = OllamaPolicy()
+        slm_up = slm.available()
+        v2 = self._v2()
+        FF = F2 if v2 else F
+        agents = []
+        if v2:
+            agents = [{"name": "react-slm", "label": f"Tool-calling agent · {slm.model} (Ollama)", "available": slm_up,
+                       "description": "A real small language model decides every tool call; the trace graph changes run to run."},
+                      {"name": "react-sim", "label": "Tool-calling agent · benchmark policy", "available": True,
+                       "description": "Deterministic stochastic policy used to build the labelled benchmark (no model download needed)."}]
+        agents += [{"name": a.name, "label": a.label + " (v1, fixed plan)", "description": a.description, "available": True}
+                   for a in ADAPTERS.values()]
+        return {"llm": {**llm.describe(), "slm": slm.model, "slm_available": slm_up}, "agents": agents, "model_version": "v2" if v2 else "v1",
+                "train_faults": FF.TRAIN_FAULTS, "heldout_faults": FF.HELDOUT_FAULTS, "tool_faults": list(getattr(FF, "TOOL_FAULTS", {})),
+                "fault_descriptions": FF.DESCRIPTIONS, "model_ready": os.path.exists(self.model_path),
+                "trained_at": self.bundle.get("trained_at") if os.path.exists(self.model_path) else None,
+                "identified_threshold": IDENTIFIED_THRESHOLD}
 
     def stats(self):
         """Every number here is computed from recorded runs, stored model diagnoses or saved replays."""
@@ -119,8 +137,9 @@ class Service:
         if run is None:
             raise KeyError(run_id)
         steps = self.rec.steps(run_id)
-        replayable = run["agent"] in ADAPTERS
+        replayable = run["agent"] in ADAPTERS or run["agent"].startswith("react")
         fault = run.get("fault")
+        FF = F2 if run["agent"].startswith("react") else F
         out = {k: run.get(k) for k in ("run_id", "question", "split", "agent", "created", "parent_run_id",
                                        "fork_sid", "fork_mode", "n_reexecuted")}
         out.update(success=bool(run["success"]), final=run["final"], expected=run["expected"], meta=run.get("meta"),
@@ -128,8 +147,8 @@ class Service:
                    duration_ms=round(sum(s["latency_ms"] for s in steps), 1),
                    # ground-truth label: shown to humans on request, never given to the model
                    label=({"fault_type": fault["type"], "fault_sid": fault["sid"],
-                           "heldout": fault["type"] in F.HELDOUT_FAULTS,
-                           "description": F.DESCRIPTIONS.get(fault["type"]),
+                           "heldout": fault["type"] in FF.HELDOUT_FAULTS,
+                           "description": FF.DESCRIPTIONS.get(fault["type"]),
                            "note": fault.get("demo_note")} if fault else None))
         return out
 
@@ -169,8 +188,10 @@ class Service:
         res.pop("steps")
         return res
 
-    def run_agent(self, agent="travel-llm", seed=None, fault_type=None):
+    def run_agent(self, agent="react-slm", seed=None, fault_type=None):
         from . import agent as A
+        if agent.startswith("react"):
+            return self._run_react(agent, seed, fault_type)
         ad = get_adapter(agent)
         seed = random.randrange(10**6) if seed is None else int(seed)
         rng = random.Random(seed)
@@ -187,11 +208,54 @@ class Service:
         self.rec.commit()
         return {"run_id": rid, "success": ok}
 
+    def _run_react(self, agent, seed, fault_type):
+        from . import agent as A
+        from .react_agent import OllamaPolicy, ScriptedPolicy, execute
+        seed = random.randrange(10**6) if seed is None else int(seed)
+        rng = random.Random(seed)
+        task = A.make_task(rng)
+        if agent == "react-slm":
+            policy = OllamaPolicy()
+            if not policy.available():
+                raise ValueError(f"the local model {policy.model} is not running (start it with `ollama serve`)")
+        else:
+            policy = ScriptedPolicy("standard")
+        fault = None
+        if fault_type:
+            if fault_type not in F2.ALL_FAULTS:
+                raise ValueError(f"unknown fault type {fault_type}")
+            if agent == "react-slm" and fault_type not in F2.TOOL_FAULTS:
+                raise ValueError("with a real model, inject environment (tool) faults; model mistakes happen on their own")
+            fault = F2.make_fault(fault_type, 0, seed)
+        steps, final, _, fsid = execute(task, policy, fault=fault, seed=seed)
+        ok, gt = A.judge(task, final)
+        if fault:
+            fault["sid"] = fsid
+            fault = fault if fsid else None
+        rid = self.rec.save_run(task, steps, final, ok, gt, fault, split="live", agent=agent,
+                                meta={"model": policy.model, "policy": getattr(policy, "variant", None), "seed": seed,
+                                      "provider": "ollama" if agent == "react-slm" else "scripted"})
+        self.rec.commit()
+        return {"run_id": rid, "success": ok}
+
     def killer_demo(self):
         return {"run_id": demo.run_killer(self.rec)}
 
     def demo_patch(self, run_id):
-        return demo.patch_from_document(self.rec.steps(run_id))
+        """Suggested repair for the demo, derived from the trace and the model's top suspect."""
+        root = self.analysis(run_id)["root_cause"]
+        return demo.suggested_repair(self.rec.steps(run_id), root["sid"])
+
+    def ingest_otlp(self, payload, success=None):
+        """Store traces from any OpenTelemetry-instrumented agent (OTLP/HTTP JSON)."""
+        from .otel import otlp_json_to_steps
+        ids = []
+        for tid, t in otlp_json_to_steps(payload).items():
+            ok = success if success is not None else not any(s["error"] for s in t["steps"])
+            ids.append(self.rec.save_run({"question": t["question"]}, t["steps"], {}, bool(ok), {}, None, split="external",
+                                         agent="external", meta={"trace_id": tid, "source": "otlp"}))
+        self.rec.commit()
+        return {"runs": ids}
 
 
 __all__ = ["Service", "ReplayUnsupported"]

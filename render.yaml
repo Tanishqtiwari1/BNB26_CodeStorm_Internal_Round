@@ -3,7 +3,7 @@ services:
     name: blackbox-flight-recorder
     runtime: python
     plan: free
-    buildCommand: pip install -r requirements.txt && python -m blackbox.cli all
+    buildCommand: pip install -r requirements.txt && python -m blackbox.cli data
     startCommand: uvicorn blackbox.api:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/info
     envVars:

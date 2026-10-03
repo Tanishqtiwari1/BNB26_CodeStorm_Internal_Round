@@ -50,6 +50,8 @@ function summarize(o) {
   if (o == null) return "—";
   if (typeof o !== "object") return String(o);
   if (o.error) return `error: ${o.error}`;
+  if (o.tool && o.args) return `${o.tool}(${Object.values(o.args).map((v) => (typeof v === "string" ? v : JSON.stringify(v))).join(", ")})`;
+  if (o.question) return `"${o.question.slice(0, 50)}…"`;
   if (o.total_usd != null) return `${money(o.total_usd)} · ${o.within_budget ? "within" : "over"} budget`;
   if (o.text) return `"${o.text.slice(0, 44)}…"`;
   for (const k of ["value", "usd", "rate", "amount"]) if (o[k] != null) return `${k}: ${typeof o[k] === "number" ? o[k].toLocaleString(undefined, { maximumFractionDigits: 6 }) : o[k]}${o.currency ? " " + o.currency : ""}`;
@@ -66,6 +68,15 @@ function descendants(steps, sid) {
   return out;
 }
 let INFO = null;
+function agentBadge(run) {
+  const a = run.agent, m = run.meta || {};
+  if (a === "react-slm") return `<span class="b blue nodot" title="A real small language model chose every tool call">SLM AGENT · ${esc(m.model)} (OLLAMA)</span>`;
+  if (a === "react-sim") return `<span class="b ghost nodot" title="Deterministic benchmark policy; same tools and trace format">BENCHMARK POLICY · ${esc(m.policy || "standard")}</span>`;
+  if (a === "external") return `<span class="b blue nodot">EXTERNAL · ${esc(m.source === "otlp" ? "OPENTELEMETRY" : "SDK")}</span>`;
+  if (a === "travel-llm") return m.provider === "anthropic" ? `<span class="b blue nodot">V1 LLM AGENT · ${esc(m.model)}</span>` : `<span class="b root nodot">V1 LLM AGENT · OFFLINE MOCK</span>`;
+  return `<span class="b ghost nodot">V1 FIXED-PLAN AGENT</span>`;
+}
+const MAIN = (L) => (L.test.gnn ? "gnn" : "model");
 
 // ------------------------------------------------------------------ workflow signature
 const STAGES = [
@@ -212,8 +223,7 @@ async function overview() {
           <td class="num muted">${r.n_reexecuted}/${r.n_steps} re-run</td></tr>`).join("")}</tbody></table>`
         : empty("NO REPLAY YET", "Select a suspicious step to replay from its checkpoint.", `<a class="btn" href="#/investigate">Investigate Trace</a>`)}
         ${m ? `<div class="bd" style="border-top:1px solid var(--border)"><div class="cap mb">BENCHMARK · HELD-OUT RUNS</div>
-          <div class="hbar"><span>Top-1, seen failure types</span><div class="bar blue"><i style="width:${m.localization.test.model.top1 * 100}%"></i></div><b>${pct(m.localization.test.model.top1, 1)}</b></div>
-          <div class="hbar"><span>Top-1, unseen failure types</span><div class="bar blue"><i style="width:${m.localization.heldout.model.top1 * 100}%"></i></div><b>${pct(m.localization.heldout.model.top1, 1)}</b></div>
+          ${[["test", "Top-1, seen failure types"], ["heldout", "Top-1, unseen failure types"], ["drift_loc", "Top-1, error source moved"], ["drift_topo", "Top-1, new agent behaviour"]].filter(([k]) => m.localization[k]).map(([k, l]) => `<div class="hbar"><span>${l}</span><div class="bar blue"><i style="width:${m.localization[k][MAIN(m.localization)].top1 * 100}%"></i></div><b>${pct(m.localization[k][MAIN(m.localization)].top1, 1)}</b></div>`).join("")}
           <div class="hbar"><span>Fixed & verified ≤ 3 replays</span><div class="bar green"><i style="width:${(m.counterfactual?.fixed_within_3 || 0) * 100}%"></i></div><b>${pct(m.counterfactual?.fixed_within_3, 1)}</b></div>
           <a class="btn sm mt" href="#/eval">Evaluation details</a></div>` : ""}
       </div>
@@ -275,7 +285,7 @@ async function investigate(id, q) {
 
   view().innerHTML = `
     <div class="crumbs"><a href="#/runs">Runs</a><span>/</span><span class="t1">${short(run.run_id)}</span>${st(run.success)}
-      ${run.agent === "travel-llm" ? (run.meta?.provider === "anthropic" ? `<span class="b blue nodot">LLM AGENT · ${esc(run.meta.model)}</span>` : `<span class="b root nodot" title="No ANTHROPIC_API_KEY: LLM steps used the deterministic offline mock">LLM AGENT · OFFLINE MOCK</span>`) : run.agent === "external" ? `<span class="b blue nodot">EXTERNAL (SDK)</span>` : `<span class="b ghost nodot">SIMULATED AGENT</span>`}
+      ${agentBadge(run)}
       <span class="b ghost nodot">${esc(run.split)}</span><span class="sp"></span>
       ${rc && run.replayable ? `<a class="btn amber" href="${repairHref(rc.sid)}">${icon("replay")}Replay From Step ${String(rcStep.idx + 1).padStart(2, "0")} (Root Cause)</a>` : ""}
     </div>
@@ -339,7 +349,7 @@ async function investigate(id, q) {
           <span class="k">OUTPUT</span><span class="mono t1">${esc(summarize(s.output))}</span></div>
           <div class="cap mt2">ANOMALY SIGNALS</div>
           ${a.flags.length ? a.flags.map((f) => `<div class="row mt" style="flex-wrap:nowrap;align-items:flex-start"><span class="dot ${f.severity === "high" ? "hit" : "warn"}" style="margin-top:5px"></span><span style="font-size:12.5px">${esc(f.text)}</span></div>`).join("") : `<div class="muted mt" style="font-size:12.5px">No anomaly signals on this step.</div>`}
-          ${run.replayable && !isFork ? `<div class="row mt2"><a class="btn sm" href="${repairHref(s.sid)}">${icon("replay")}Replay from here</a><a class="btn sm" href="${repairHref(s.sid, "patch_output")}">Patch output</a><a class="btn sm" href="${repairHref(s.sid, "patch_args")}">Patch arguments</a></div>` : ""}`
+          ${run.replayable && !isFork ? `<div class="row mt2"><a class="btn sm" href="${repairHref(s.sid)}">${icon("replay")}Replay from here</a><a class="btn sm" href="${repairHref(s.sid, "patch_output")}">Patch output</a>${["tool", "retrieval"].includes(s.kind) ? `<a class="btn sm" href="${repairHref(s.sid, "patch_args")}">Patch arguments</a>` : ""}</div>` : ""}`
         : `<pre class="json">${jsonHtml(tab === "input" ? s.args : s.output)}</pre>`}</div>`;
     $$("[data-t]", $("#insp")).forEach((b) => (b.onclick = () => { tab = b.dataset.t; renderInsp(); }));
     $$("[data-pick]", $("#insp")).forEach((c) => (c.onclick = () => pick(c.dataset.pick)));
@@ -446,10 +456,10 @@ async function repairView(id, q) {
           <div class="mono t1 mt" style="font-size:13px">${esc(summarize(cur))}</div>
           <details><summary class="cap" style="cursor:pointer;margin-top:8px">recorded JSON</summary><pre class="json">${jsonHtml(cur)}</pre></details>
           <div class="cap mt2">ALTERNATIVE EXECUTION</div>
-          <div class="seg mt" id="modes">${[["repair", "Re-run step fresh"], ["patch_output", "Patch output"], ["patch_args", "Patch arguments"]].map(([k, l]) => `<button data-m="${k}" class="${k === mode ? "on" : ""}">${l}</button>`).join("")}</div>
+          <div class="seg mt" id="modes">${[["repair", "Re-run step fresh"], ["patch_output", "Patch output"], ["patch_args", "Patch arguments"]].filter(([k]) => k !== "patch_args" || ["tool", "retrieval"].includes(step().kind)).map(([k, l]) => `<button data-m="${k}" class="${k === mode ? "on" : ""}">${l}</button>`).join("")}</div>
           <div class="muted mt" style="font-size:12px">${{ repair: "Re-derive this step's inputs from its parents and call the real tool or LLM again.", patch_output: "Replace this step's output with your value; every dependent step re-runs.", patch_args: "Call this step's real function with your arguments; every dependent step re-runs." }[mode]}</div>
           ${mode !== "repair" ? `
-            <div class="row mt2"><span class="cap">PROPOSED FIX (JSON)</span><span class="sp"></span>${run.split === "demo" && mode === "patch_output" && sid === "L0.rate" ? `<button class="btn sm" id="docfix">Use value from retrieved document</button>` : ""}</div>
+            <div class="row mt2"><span class="cap">PROPOSED FIX (JSON)</span><span class="sp"></span>${run.split === "demo" ? `<button class="btn sm" id="docfix">Use suggested repair</button>` : ""}</div>
             <textarea id="patch" rows="7" class="mt">${esc(JSON.stringify(staged ?? cur, null, 2))}</textarea>
             <div id="srcnote" class="dim" style="font-size:11px">${esc(srcNote)}</div>
             ${staged ? `<div class="card mt"><div class="row"><span class="b blue">PATCH APPLIED</span><span class="muted" style="font-size:12px">${diffFields(cur, staged).length} field(s) change · ready to replay</span></div>
@@ -458,7 +468,7 @@ async function repairView(id, q) {
               <button class="btn" id="apply">${icon("check")}Apply Patch</button>
               <button class="btn primary" id="run" ${staged ? "" : "disabled"} title="${staged ? "" : "Apply the patch first"}">${icon("replay")}Run Replay</button>
               <button class="btn" id="cancel">Cancel</button></div>`
-          : `<div class="row mt2"><button class="btn primary" id="run">${icon("replay")}Run Replay</button></div>`}
+          : `<div class="row mt2"><button class="btn primary" id="run">${icon("replay")}Run Replay</button>${run.split === "demo" ? `<button class="btn sm" id="docfix">Use suggested repair</button>` : ""}<span class="dim" style="font-size:11px">${esc(srcNote)}</span></div>`}
         </div></div>
       </div>
       <div class="mt" id="verify">${verifyHtml()}</div>`;
@@ -482,7 +492,11 @@ async function repairView(id, q) {
     };
     const cn = $("#cancel"); if (cn) cn.onclick = () => { staged = null; result = null; error = null; shell(); };
     const df = $("#docfix"); if (df) df.onclick = async () => {
-      try { const p = await api(`/api/demo/patch/${id}`); $("#patch").value = JSON.stringify(p.patch, null, 2); srcNote = `from the retrieved document (L0.doc): "${p.source}"`; $("#srcnote").textContent = srcNote; }
+      try {
+        const p = await api(`/api/demo/patch/${id}`);
+        if (p.sid !== sid || p.mode !== mode) { sid = p.sid; mode = p.mode; staged = p.patch; srcNote = `suggested: ${p.source}`; shell(); return; }
+        $("#patch").value = JSON.stringify(p.patch, null, 2); srcNote = `suggested from the trace: "${p.source}"`; $("#srcnote").textContent = srcNote;
+      }
       catch (e) { toast(e.message); }
     };
   }
@@ -526,7 +540,7 @@ async function compareView(a, b) {
         <td class="dim">${String(r.idx + 1).padStart(2, "0")}</td><td>${kind(r.kind)} <span class="t1">${esc(r.sid)}</span> <span class="muted">${esc(r.name)}</span></td>
         <td>${r.changed ? `<span style="color:var(--red-2)">${esc(summarize(r.before))}</span>` : `<span class="muted">${esc(summarize(r.before))}</span>`}</td>
         <td>${r.reused ? `<span class="muted">↩ same (reused)</span>` : r.changed ? `<span style="color:var(--green-2)">${esc(summarize(r.after))}</span>` : `<span class="muted">${esc(summarize(r.after))}</span>`}</td>
-        <td>${r.reused ? `<span class="b slate nodot">REUSED</span>` : r.changed ? `<span class="b ok nodot">CHANGED · RE-EXECUTED</span>` : `<span class="b blue nodot">RE-EXECUTED · SAME</span>`}</td></tr>
+        <td>${r.status === "added" ? `<span class="b blue nodot">NEW PATH · ADDED</span>` : r.status === "removed" ? `<span class="b fail nodot">NOT IN REPLAY</span>` : r.reused ? `<span class="b slate nodot">REUSED</span>` : r.changed ? `<span class="b ok nodot">CHANGED · RE-EXECUTED</span>` : `<span class="b blue nodot">RE-EXECUTED · SAME</span>`}</td></tr>
         <tr class="det" data-d="${i}" style="display:none"><td></td><td colspan="4"><div class="grid g2"><div><div class="cap">ORIGINAL OUTPUT</div><pre class="json">${jsonHtml(r.before)}</pre></div><div><div class="cap">REPAIRED OUTPUT</div><pre class="json">${jsonHtml(r.after)}</pre></div></div></td></tr>`).join("")}
     </tbody></table></div></div>`;
   $$("tr[data-i]").forEach((tr) => (tr.onclick = () => { const d = $(`tr[data-d="${tr.dataset.i}"]`); d.style.display = d.style.display === "none" ? "" : "none"; }));
@@ -535,39 +549,37 @@ async function compareView(a, b) {
 // ------------------------------------------------------------------ EVALUATION
 async function evalView() {
   const [m, info] = await Promise.all([api("/api/metrics"), INFO || api("/api/info")]);
-  const L = m.localization, cf = m.counterfactual || {};
-  const names = { model: "Black Box model", first_suspicious: "Rule: first suspicious step", max_anomaly: "Highest-anomaly step", last_step: "Last step", random: "Random step" };
+  const L = m.localization, cf = m.counterfactual || {}, v2 = m.version === "v2-graph";
+  const K = MAIN(L);
+  const SPL = v2 ? [["test", "Seen faults"], ["heldout", "Unseen fault types"], ["drift_loc", "Error source moved"], ["drift_topo", "New agent behaviour"]]
+                 : [["test", "Seen faults"], ["heldout", "Unseen fault types"]];
+  const names = v2 ? { gnn: "Graph neural network (production)", gbm: "Gradient boosting + hand-made lineage features", pagerank: "Personalized PageRank (no training)", first_suspicious: "Rule: first suspicious step", random: "Random step" }
+                   : { model: "Black Box model", first_suspicious: "Rule: first suspicious step", max_anomaly: "Highest-anomaly step", last_step: "Last step", random: "Random step" };
   const bt = Object.entries(m.by_fault_type).sort((x, y) => (x[1].heldout - y[1].heldout) || (y[1].top1 - x[1].top1));
-  view().innerHTML = `<h1>Evaluation</h1><div class="sub">Does the loop actually work? Numbers are read from <code>data/metrics.json</code>, produced by <code>python -m blackbox.cli all</code> on runs never used for training.</div>
+  view().innerHTML = `<h1>Evaluation</h1><div class="sub">Does the loop actually work? Numbers are read from <code>data/metrics.json</code>, produced by <code>python -m blackbox.cli all</code> on runs never used for training.${v2 ? " Traces come from a dynamic tool-calling agent via OpenTelemetry, so every run has its own graph shape." : ""}</div>
     <div class="mb">${loop({ detect: "done", explain: "done", replay: "done", repair: "done", verify: "done" })}</div>
     <div class="metrics mb">
-      <div class="metric"><div class="cap">DETECT · RUN-FAILURE AUC</div><div class="v">${m.run_failure_auc.toFixed(3)}</div><div class="s">from the trace alone</div></div>
-      <div class="metric"><div class="cap">EXPLAIN · TOP-1 SEEN</div><div class="v blue">${pct(L.test.model.top1, 1)}</div><div class="s">top-3 ${pct(L.test.model.top3, 1)}</div></div>
-      <div class="metric"><div class="cap">EXPLAIN · TOP-1 UNSEEN</div><div class="v blue">${pct(L.heldout.model.top1, 1)}</div><div class="s">top-3 ${pct(L.heldout.model.top3, 1)}</div></div>
-      <div class="metric"><div class="cap">REPLAY · STEPS RE-RUN</div><div class="v">${pct(cf.reexec_ratio)}</div><div class="s">${cf.avg_reexec?.toFixed(1)} of ${cf.avg_steps?.toFixed(1)} on avg</div></div>
+      ${SPL.map(([k, l]) => `<div class="metric"><div class="cap">EXPLAIN · ${l.toUpperCase()}</div><div class="v blue">${pct(L[k][K].top1, 1)}</div><div class="s">top-3 ${pct(L[k][K].top3, 1)} · n=${L[k][K].n}</div></div>`).join("")}
       <div class="metric"><div class="cap">REPAIR · TOP-1 FIXES</div><div class="v green">${pct(cf.confirm_top1, 1)}</div><div class="s">repairing #1 suspect</div></div>
       <div class="metric"><div class="cap">VERIFY · FIXED ≤ 3 REPLAYS</div><div class="v green">${pct(cf.fixed_within_3, 1)}</div><div class="s">avg ${cf.avg_replays?.toFixed(2)} replays</div></div>
     </div>
-    <div class="grid g2">
-      <div class="panel"><div class="hd"><h2>Explain · root-cause localization vs baselines</h2></div><div class="tablewrap"><table>
-        <thead><tr><th>Method</th><th class="num">Seen top-1</th><th class="num">Seen top-3</th><th class="num">Unseen top-1</th><th class="num">Unseen top-3</th></tr></thead>
-        <tbody>${Object.keys(names).map((k) => `<tr ${k === "model" ? 'style="background:var(--blue-t)"' : ""}><td>${k === "model" ? `<b class="t1">${names[k]}</b>` : names[k]}</td><td class="num">${pct(L.test[k].top1, 1)}</td><td class="num">${pct(L.test[k].top3, 1)}</td><td class="num">${pct(L.heldout[k].top1, 1)}</td><td class="num">${pct(L.heldout[k].top3, 1)}</td></tr>`).join("")}</tbody></table></div>
-        <div class="bd muted" style="font-size:12px">${L.test.model.n} failed runs with seen failure types · ${L.heldout.model.n} with failure types never shown in training.</div></div>
-      <div class="panel"><div class="hd"><h2>Top-1 by failure type</h2><span class="legend"><span><i style="background:var(--blue)"></i>seen</span><span><i style="background:var(--amber)"></i>never seen</span></span></div><div class="bd">
-        ${bt.map(([k, v]) => `<div class="hbar" title="${esc(v.desc)}"><span class="mono" style="font-size:12px">${esc(k)}</span><div class="bar ${v.heldout ? "" : "blue"}"><i style="width:${v.top1 * 100}%"></i></div><b>${pct(v.top1)}</b></div>`).join("")}
-        <div class="muted mt" style="font-size:12px">Weakest: off-by-one parses whose wrong count coincides with another number in the question leave no anomaly in the trace.</div></div></div>
-    </div>
+    <div class="panel"><div class="hd"><h2>Root-cause localization · top-1 (top-3)</h2><span class="muted mono" style="font-size:11px">DETECT · run-failure AUC ${m.run_failure_auc.toFixed(3)}</span></div><div class="tablewrap"><table>
+      <thead><tr><th>Method</th>${SPL.map(([, l]) => `<th class="num">${l}</th>`).join("")}</tr></thead>
+      <tbody>${Object.keys(names).filter((k) => L.test[k]).map((k) => `<tr ${k === K ? 'style="background:var(--blue-t)"' : ""}><td>${k === K ? `<b class="t1">${names[k]}</b>` : names[k]}</td>${SPL.map(([sp]) => `<td class="num">${pct(L[sp][k].top1, 1)} <span class="dim">(${pct(L[sp][k].top3)})</span></td>`).join("")}</tr>`).join("")}</tbody></table></div>
+      <div class="bd muted" style="font-size:12px">${v2 ? "<b>Error source moved</b>: training fault types injected at later occurrences than any training example. <b>New agent behaviour</b>: a different policy (other ordering, extra verification calls), i.e. graph shapes never seen in training. The GNN only sees per-step facts and learns propagation along trace edges; it is best or tied on 3 of 4 splits, gradient boosting is slightly ahead when the error source moves." : ""}</div></div>
     <div class="grid g2 mt">
-      <div class="panel"><div class="hd"><h2>Replay · full re-run vs checkpoint replay</h2></div><div class="bd">
-        <div class="hbar"><span>Full re-run</span><div class="bar red"><i style="width:100%"></i></div><b>${cf.avg_steps?.toFixed(1)}</b></div>
-        <div class="hbar"><span>Re-run from suspect step</span><div class="bar slate"><i style="width:${(cf.suffix_ratio || 0) * 100}%"></i></div><b>${cf.avg_suffix?.toFixed(1)}</b></div>
-        <div class="hbar"><span class="t1">Black Box replay</span><div class="bar blue"><i style="width:${(cf.reexec_ratio || 0) * 100}%"></i></div><b>${cf.avg_reexec?.toFixed(1)}</b></div>
-        <div class="muted mt" style="font-size:12px">Average steps executed to test a repair. Black Box re-runs the checkpoint step and its data-flow descendants only; ${(cf.avg_steps - cf.avg_reexec).toFixed(1)} steps per replay are reused on average.</div></div></div>
-      <div class="panel"><div class="hd"><h2>Methodology</h2></div><div class="bd" style="font-size:12.5px">
-        <div>${num(m.corpus.runs)} recorded runs (${num(m.corpus.steps)} steps). One fault per faulty run, so the true root-cause step is known.</div>
+      <div class="panel"><div class="hd"><h2>Top-1 by failure type</h2><span class="legend"><span><i style="background:var(--blue)"></i>seen</span><span><i style="background:var(--amber)"></i>never seen</span></span></div><div class="bd">
+        ${bt.map(([k, v]) => `<div class="hbar" title="${esc(v.desc)}"><span class="mono" style="font-size:12px">${esc(k)}</span><div class="bar ${v.heldout ? "" : "blue"}"><i style="width:${v.top1 * 100}%"></i></div><b>${pct(v.top1)}</b></div>`).join("")}</div></div>
+      <div class="panel"><div class="hd"><h2>Replay · reuse instead of re-running</h2></div><div class="bd">
+        ${v2 ? `<div class="hbar"><span>Steps per repaired run</span><div class="bar red"><i style="width:100%"></i></div><b>${cf.avg_steps?.toFixed(1)}</b></div>
+        <div class="hbar"><span class="t1">Re-executed by Black Box</span><div class="bar blue"><i style="width:${(cf.reexec_ratio || 0) * 100}%"></i></div><b>${cf.avg_reexec?.toFixed(1)}</b></div>
+        <div class="hbar"><span>Reused (checkpoint + recorded tool calls)</span><div class="bar slate"><i style="width:${(1 - (cf.reexec_ratio || 0)) * 100}%"></i></div><b>${cf.avg_reused?.toFixed(1)}</b></div>
+        <div class="muted mt" style="font-size:12px">After a repair the agent re-plans and may take a different path; tool calls with unchanged inputs are served from the recording.</div>`
+        : `<div class="hbar"><span>Full re-run</span><div class="bar red"><i style="width:100%"></i></div><b>${cf.avg_steps?.toFixed(1)}</b></div><div class="hbar"><span class="t1">Black Box replay</span><div class="bar blue"><i style="width:${(cf.reexec_ratio || 0) * 100}%"></i></div><b>${cf.avg_reexec?.toFixed(1)}</b></div>`}
+        <div class="cap mt2">METHODOLOGY</div>
+        <div class="mt" style="font-size:12.5px">${num(m.corpus.runs)} runs (${num(m.corpus.steps)} steps), one fault per faulty run.</div>
         <div class="mt"><span class="cap">TRAINING</span> <span class="chips mt">${info.train_faults.map((f) => `<span class="chip">${f}</span>`).join("")}</span></div>
-        <div class="mt"><span class="cap">HELD-OUT</span> <span class="chips mt">${info.heldout_faults.map((f) => `<span class="chip root">${f}</span>`).join("")}</span></div>
-        <div class="muted mt">Trace-only features; the model never sees fault labels, step identity, position or timing. Repair success is measured by replaying the suspect step fresh and re-checking the task.</div></div></div>
+        <div class="mt"><span class="cap">HELD-OUT</span> <span class="chips mt">${info.heldout_faults.map((f) => `<span class="chip root">${f}</span>`).join("")}</span></div></div></div>
     </div>`;
 }
 
@@ -582,8 +594,8 @@ async function demoView() {
   const cards = [];
   const actions = [
     async () => { const r = await api("/api/demo/killer", { method: "POST" }); S.id = r.run_id; S.run = await api(`/api/runs/${S.id}`);
-      return `<div class="t1" style="font-size:14px">${esc(S.run.question)}</div><div class="row mt"><span class="kind llm">LLM AGENT</span><span class="muted mono" style="font-size:11px">${esc(S.run.meta?.provider === "anthropic" ? S.run.meta.model : "offline mock (no API key)")}</span><span class="b blue">TRACE CAPTURED · ${S.run.n_steps} STEPS</span></div>
-        <div class="muted mt" style="font-size:12px">LLM parses the request → retrieves the hotel document → LLM extracts the price → tools compute FX, flights, totals → LLM answers.</div>`; },
+      return `<div class="t1" style="font-size:14px">${esc(S.run.question)}</div><div class="row mt">${agentBadge(S.run)}<span class="b blue">OPENTELEMETRY TRACE · ${S.run.n_steps} SPANS</span></div>
+        <div class="muted mt" style="font-size:12px">The agent decides every tool call itself (search hotel, FX, flights, calculator, final answer). Each decision and tool call is an OpenTelemetry span; data-flow links become graph edges.</div>`; },
     async () => `<div class="outc"><div class="o"><div class="cap">AGENT ANSWER</div><div class="val" style="color:var(--red-2)">${money(S.run.final.total_usd)}</div><div class="muted">says ${S.run.final.within_budget ? "within" : "over"} budget</div></div><div class="muted" style="text-align:center">≠</div>
       <div class="o"><div class="cap">TASK CHECK EXPECTS</div><div class="val">${money(S.run.expected.total_usd)}</div><div class="muted">${S.run.expected.within_budget ? "within" : "over"} budget</div></div></div>`,
     async () => { S.dx = await api(`/api/runs/${S.id}/diagnosis`);
@@ -596,10 +608,12 @@ async function demoView() {
         <div class="vrow"><span class="lb" style="color:var(--blue-2)">BLACK BOX REPLAY</span><span class="cells">${S.run.steps.map((s) => `<i class="${re.has(s.sid) ? "re" : "us"}" title="${esc(s.sid)}"></i>`).join("")}</span><span class="num">${re.size} re-run · ${S.run.steps.length - re.size} reused</span></div></div>
         <div class="muted mt" style="font-size:12px">Checkpoint at <b class="mono">${esc(S.rc.sid)}</b>: unaffected steps are restored from the recording, not re-run.</div>`; },
     async () => { S.patch = await api(`/api/demo/patch/${S.id}`); const cur = S.run.steps.find((x) => x.sid === S.patch.sid).output;
-      return `<div class="cap">ROOT CAUSE · ${esc(S.patch.sid)}</div>${diffFields(cur, S.patch.patch).map(([k, a, b]) => `<div class="diffline"><span class="muted">${esc(k)}</span><span class="from">${esc(JSON.stringify(a))}</span><span class="dim">→</span><span class="to">${esc(JSON.stringify(b))}</span></div>`).join("")}
-        <div class="muted mt" style="font-size:12px">Proposed fix read from the retrieved document (L0.doc): <span class="mono t1">"${esc(S.patch.source)}"</span></div>`; },
-    async () => { S.res = await api(`/api/runs/${S.id}/replay`, { method: "POST", body: JSON.stringify({ sid: S.patch.sid, mode: "patch_output", patch: S.patch.patch }) });
-      return `<div class="row"><span class="b blue">${S.res.n_reexecuted} RE-EXECUTED</span><span class="b slate">${S.res.n_reused} REUSED</span><span class="muted" style="font-size:12px">a naive re-run from this step would run ${S.res.n_suffix}; a full re-run ${S.res.n_total}</span></div>
+      if (S.patch.mode === "repair") return `<div class="cap">ROOT CAUSE · ${esc(S.patch.sid)}</div><div class="mt">Repair: <span class="mono t1">${esc(S.patch.source)}</span></div><div class="muted mt" style="font-size:12px">The agent then continues on its own from the restored checkpoint.</div>`;
+      const flat = (o) => (o && o.args ? { ...o.args } : o);
+      return `<div class="cap">ROOT CAUSE · ${esc(S.patch.sid)}</div>${diffFields(flat(cur), flat(S.patch.patch)).map(([k, a, b]) => `<div class="diffline"><span class="muted">${esc(k)}</span><span class="from">${esc(JSON.stringify(a))}</span><span class="dim">→</span><span class="to">${esc(JSON.stringify(b))}</span></div>`).join("")}
+        <div class="muted mt" style="font-size:12px">Fix derived from the retrieved page: <span class="mono t1">"${esc(S.patch.source)}"</span></div>`; },
+    async () => { S.res = await api(`/api/runs/${S.id}/replay`, { method: "POST", body: JSON.stringify({ sid: S.patch.sid, mode: S.patch.mode, patch: S.patch.patch }) });
+      return `<div class="row"><span class="b blue">${S.res.n_reexecuted} RE-EXECUTED</span><span class="b slate">${S.res.n_reused} REUSED</span>${S.res.path_changed ? `<span class="b root nodot">AGENT TOOK A NEW PATH</span>` : ""}<span class="muted" style="font-size:12px">a full re-run would execute ${S.res.n_total}</span></div>
         <div class="chips mt">${S.res.rerun.map((x) => `<span class="chip" style="border-color:var(--blue);color:var(--blue-2)">▶ ${esc(x)}</span>`).join("")}${S.run.steps.filter((s) => !S.res.rerun.includes(s.sid)).map((s) => `<span class="chip">↩ ${esc(s.sid)}</span>`).join("")}</div>`; },
     async () => { S.cmp = await api(`/api/compare?a=${S.id}&b=${S.res.run_id}`);
       return `<div class="muted" style="font-size:12px">Execution diverged at <b class="mono t1">${esc(S.cmp.first_divergence)}</b> · ${S.cmp.n_changed} steps changed</div>
@@ -620,11 +634,20 @@ async function demoView() {
       <div class="mb">${loop(stage)}</div>
       <div class="demo">
         <div class="panel"><ul class="dsteps">${STEPS.map(([t], j) => `<li class="${j < i ? "done" : j === i ? "now" : ""}"><span class="n">${j < i ? "✓" : j + 1}</span><span>${t}</span></li>`).join("")}</ul></div>
-        <div id="cards">${cards.length ? cards.join("") : `<div class="panel">${empty("READY", "Press <b>Start demo</b>. An LLM travel agent will estimate a trip and get it wrong; then watch the loop.")}</div>`}</div>
+        <div id="cards">${cards.length ? cards.join("") : `<div class="panel">${empty("READY", "Press <b>Start demo</b>. A tool-calling travel agent will estimate a trip and get it wrong; then watch the loop.")}</div>
+          <div class="panel mt"><div class="hd"><h2>Or record your own execution</h2><span class="muted mono" style="font-size:11px">${INFO?.llm?.slm_available ? `SLM ${esc(INFO.llm.slm)} ready` : "SLM not running · benchmark policy available"}</span></div><div class="bd row">
+            <select id="ra">${(INFO?.agents || []).filter((a) => a.name.startsWith("react")).map((a) => `<option value="${a.name}" ${!a.available ? "disabled" : ""}>${esc(a.label)}${a.available ? "" : " (not running)"}</option>`).join("")}</select>
+            <select id="rf"><option value="">no injected fault</option>${(INFO?.train_faults || []).concat(INFO?.heldout_faults || []).map((f) => `<option value="${f}">${f}${(INFO.heldout_faults || []).includes(f) ? " (unseen)" : ""}</option>`).join("")}</select>
+            <button class="btn" id="rgo">Run &amp; investigate</button></div></div>`}</div>
       </div>`;
     const n = $("#next"); if (n) n.onclick = next;
     const a = $("#all"); if (a) a.onclick = runAll;
     const r = $("#restart"); if (r) r.onclick = () => { i = 0; cards.length = 0; Object.keys(S).forEach((k) => delete S[k]); render(); };
+    const rg = $("#rgo"); if (rg) rg.onclick = async () => {
+      rg.disabled = true; rg.innerHTML = '<span class="spin"></span> Running…';
+      try { const x = await api("/api/agent/run", { method: "POST", body: JSON.stringify({ agent: $("#ra").value, fault_type: $("#rf").value || null }) }); go(`/investigate/${x.run_id}`); }
+      catch (e) { toast(e.message); rg.disabled = false; rg.textContent = "Run & investigate"; }
+    };
   };
   async function next() {
     if (busy || i >= STEPS.length) return;
@@ -658,7 +681,9 @@ async function aboutView() {
   try {
     INFO = await api("/api/info");
     $("#api-st").innerHTML = `<span class="dot ok"></span>RECORDER ONLINE`;
-    $("#llm-st").innerHTML = `LLM · ${esc(INFO.llm.provider === "anthropic" ? INFO.llm.model : "OFFLINE MOCK")}`;
+    $("#llm-st").innerHTML = INFO.model_version === "v2"
+      ? `<span class="dot ${INFO.llm.slm_available ? "ok" : "warn"}"></span>SLM · ${esc(INFO.llm.slm)} ${INFO.llm.slm_available ? "READY" : "NOT RUNNING"}`
+      : `LLM · ${esc(INFO.llm.provider === "anthropic" ? INFO.llm.model : "OFFLINE MOCK")}`;
   } catch (_) { $("#api-st").innerHTML = `<span class="dot hit"></span>API OFFLINE`; }
   router();
 })();

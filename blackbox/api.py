@@ -18,7 +18,7 @@ WEB = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
 app = FastAPI(title="Black Box API", version="1.0",
               description="AI agent flight recorder: traces, root-cause diagnosis, checkpointed replay.")
 svc = Service(db=os.environ.get("BLACKBOX_DB", "data/blackbox.db"),
-              model_path=os.environ.get("BLACKBOX_MODEL", "data/model.joblib"),
+              model_path=os.environ.get("BLACKBOX_MODEL", "data/model_v2.joblib" if os.path.exists("data/model_v2.joblib") else "data/model.joblib"),
               metrics_path=os.environ.get("BLACKBOX_METRICS", "data/metrics.json"),
               background=os.environ.get("BLACKBOX_BACKGROUND", "1") == "1")
 
@@ -43,7 +43,7 @@ class ReplayReq(BaseModel):
 
 
 class AgentReq(BaseModel):
-    agent: Literal["travel-llm", "travel-sim"] = "travel-llm"
+    agent: Literal["react-slm", "react-sim", "travel-llm", "travel-sim"] = "react-slm"
     seed: Optional[int] = None
     fault_type: Optional[str] = None
 
@@ -103,6 +103,12 @@ def replays(limit: int = Query(50, ge=1, le=500), offset: int = Query(0, ge=0)):
 @app.get("/api/demo/patch/{run_id}")
 def demo_patch(run_id: str):
     return _call(svc.demo_patch, run_id)
+
+
+@app.post("/api/otlp/v1/traces")
+def otlp_ingest(payload: dict, success: Optional[bool] = None):
+    """OTLP/HTTP JSON ingestion: point any OpenTelemetry exporter here."""
+    return _call(svc.ingest_otlp, payload, success)
 
 
 @app.get("/api/compare")

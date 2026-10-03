@@ -275,3 +275,4 @@ td.num, th.num { text-align: right; font-family: var(--mono); font-variant-numer
   .vrow { grid-template-columns: 1fr; }
 }
 .demo > .panel:first-child { position: sticky; top: 60px; }
+.kind.input { color: var(--text-2); border-color: var(--border-2); background: var(--elev); }

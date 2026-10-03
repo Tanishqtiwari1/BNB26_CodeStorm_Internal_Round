@@ -79,6 +79,9 @@ def load(path="data/model.joblib"):
 
 # ------------------------------------------------------------------ inference
 def diagnose(bundle, steps):
+    if bundle.get("kind") == "v2":
+        from . import model_v2
+        return model_v2.diagnose(bundle, steps)
     rows, sig, desc = FT.run_features(steps, bundle["norms"])
     p = bundle["clf"].predict_proba(_X(rows))[:, 1]
     p_fail = float(bundle["run_clf"].predict_proba(_Xr(FT.run_level(steps, rows, sig)))[0, 1])
@@ -120,23 +123,27 @@ def explain(bundle, steps, dx, i):
     """Evidence for step i, ranked by how much each signal drives the model's score."""
     rows, sig = dx["rows"], dx["sig"]
     s, d, r = steps[i], dx["sig"][steps[i]["sid"]], rows[i]
-    base = float(bundle["clf"].predict_proba(_X([r]))[0, 1])
-    contribs = {}
-    for g, neutral in LOCAL_GROUPS.items():
+    if bundle.get("kind") == "v2":
+        from . import model_v2
+        contribs, base, joint_local = model_v2.contribs(bundle, steps, dx, i)
+    else:
+        base = float(bundle["clf"].predict_proba(_X([r]))[0, 1])
+        contribs = {}
+        for g, neutral in LOCAL_GROUPS.items():
+            sg = dict(sig)
+            sg[s["sid"]] = FT.derive({**d, **neutral})
+            rr, _ = FT.rows_from_signals(steps, sg)
+            contribs[g] = base - float(bundle["clf"].predict_proba(_X([rr[i]]))[0, 1])
+        # joint effect of all local signals (they often overlap, which hides each one alone)
         sg = dict(sig)
-        sg[s["sid"]] = FT.derive({**d, **neutral})
+        allneutral = {k: v for g in LOCAL_GROUPS.values() for k, v in g.items()}
+        sg[s["sid"]] = FT.derive({**d, **allneutral})
         rr, _ = FT.rows_from_signals(steps, sg)
-        contribs[g] = base - float(bundle["clf"].predict_proba(_X([rr[i]]))[0, 1])
-    # joint effect of all local signals (they often overlap, which hides each one alone)
-    sg = dict(sig)
-    allneutral = {k: v for g in LOCAL_GROUPS.values() for k, v in g.items()}
-    sg[s["sid"]] = FT.derive({**d, **allneutral})
-    rr, _ = FT.rows_from_signals(steps, sg)
-    joint_local = base - float(bundle["clf"].predict_proba(_X([rr[i]]))[0, 1])
-    for g, over in ROW_GROUPS.items():
-        rr = {**r, **over}
-        rr["new_anom"] = rr["value_z"] - rr["max_anc_z"]
-        contribs[g] = base - float(bundle["clf"].predict_proba(_X([rr]))[0, 1])
+        joint_local = base - float(bundle["clf"].predict_proba(_X([rr[i]]))[0, 1])
+        for g, over in ROW_GROUPS.items():
+            rr = {**r, **over}
+            rr["new_anom"] = rr["value_z"] - rr["max_anc_z"]
+            contribs[g] = base - float(bundle["clf"].predict_proba(_X([rr]))[0, 1])
     D = dx["desc"][s["sid"]]
     anom_d = [x for x in D if sig[x]["value_z"] > 3 or sig[x]["local_ground"] < 1]
     by = {x["sid"]: x for x in steps}
@@ -163,6 +170,10 @@ def explain(bundle, steps, dx, i):
                         observed=", ".join(map(_fmt, ung)))
         elif g == "out_grounding" and d["out_grounding"] < 1:
             src = s["args"].get("context") or s["args"].get("question") or ""
+            if not src:  # dynamic agent: everything observed before this decision, retrieved pages first
+                obs = [x for x in steps[:i] if not x["name"].startswith("call:")]
+                obs.sort(key=lambda x: (x["kind"] != "retrieval", x["kind"] == "input"))
+                src = " ".join(json.dumps(x["output"]) for x in obs)
             import re as _re
             nums = list(dict.fromkeys(float(m.replace(",", "")) for m in _re.findall(r"\d[\d,]*(?:\.\d+)?", src)))
             item = dict(text=(f"Output value(s) {', '.join(map(_fmt, d['ungrounded_out']))} are not present in the step's "
