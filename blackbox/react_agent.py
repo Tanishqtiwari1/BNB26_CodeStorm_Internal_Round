@@ -387,7 +387,7 @@ class GroqPolicy(OllamaPolicy):
             return json.loads(hit)
         body = {"model": self.model, "messages": oai, "tools": TOOL_SPECS, "tool_choice": "auto", "temperature": 0, "max_tokens": 512}
         if "gpt-oss" in self.model:
-            body["reasoning_effort"] = "low"  # reasoning tokens count against the per-minute limit
+            body["reasoning_effort"] = os.environ.get("GROQ_REASONING", "medium")  # "low" saves tokens but skips steps (e.g. the flight back)
         r = self._req("/chat/completions", body)
         msg = r["choices"][0]["message"]
         out = {"content": msg.get("content") or "", "tool_calls": [{"function": {"name": c["function"]["name"],
