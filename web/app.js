@@ -57,7 +57,7 @@ function summarize(o) {
   if (o.error) return `error: ${o.error}`;
   if (o.tool && o.args) return `${o.tool}(${Object.values(o.args).map((v) => (typeof v === "string" ? v : JSON.stringify(v))).join(", ")})`;
   if (o.question) return `“${o.question.slice(0, 90)}…”`;
-  if (o.total_usd !== undefined) return `${money(o.total_usd)} · ${o.within_budget ? "within" : "over"} budget`;
+  if (o.total_usd !== undefined) return o.within_budget == null ? money(o.total_usd) : `${money(o.total_usd)} · ${o.within_budget ? "within" : "over"} budget`;
   if (o.text) return `“${o.text.slice(0, 70)}…”`;
   for (const k of ["value", "usd", "rate", "amount"]) if (o[k] != null) return `${k}: ${typeof o[k] === "number" ? o[k].toLocaleString(undefined, { maximumFractionDigits: 6 }) : o[k]}${o.currency ? " " + o.currency : ""}`;
   if (o.within_budget != null) return `within_budget: ${o.within_budget}`;
@@ -89,7 +89,7 @@ function agentName(run) {
   const m = run.meta || {};
   if (run.agent === "react-slm") return `${m.model || "model"} · ${(m.provider || "").toUpperCase()}`;
   if (run.agent === "react-sim") return `Benchmark agent (${m.policy || "standard"})`;
-  if (run.agent === "external") return "External agent (OpenTelemetry)";
+  if (run.agent === "external") return `${m.service || "External agent"} (OpenTelemetry)`;
   return "v1 fixed-plan agent";
 }
 let INFO = null, BADGE = 0;
@@ -330,6 +330,7 @@ async function investigate(id, q) {
       ${isFork ? `<span class="st rep">Replay</span>` : statusPill(run.success)}
       <span class="kv">AGENT: <b>${esc(agentName(run))}</b></span><span class="kv">DUR: <b>${ms(run.duration_ms)}</b></span>
       <span class="kv">STEPS: <b>${run.n_steps}</b></span><span class="kv">RECORDED: <b>${ago(run.created)}</b></span><span class="kv muted">${esc(run.split)}</span>
+      ${dx.baseline ? `<span class="kv" title="External agents are compared with their own earlier passing runs, never with Black Box's built-in agent.">BASELINE: <b style="color:${dx.baseline.active ? "var(--green-2)" : "var(--amber-2)"}">${dx.baseline.active ? `${dx.baseline.healthy_runs} healthy runs of ${esc(dx.baseline.service)}` : `learning (${dx.baseline.healthy_runs}/${dx.baseline.needed} healthy runs)`}</b></span>` : ""}
     </div>
     <div class="row mt">
       ${rc && run.replayable ? `<a class="btn primary" href="${repairHref(rc.sid)}">${icon("replay")}Replay From Root Cause</a>` : ""}
@@ -341,7 +342,7 @@ async function investigate(id, q) {
       <div class="kpi"><div class="cap">Failure risk (trace only)</div><div class="v">${pct(dx.p_fail)}</div></div>
       <div class="kpi"><div class="cap">Blast radius</div><div class="v">${rc ? `${impacted.size} steps` : "—"}<small>${rc ? `${dx.impacted_anomalous.length} anomalous` : ""}</small></div></div>
       <div class="kpi"><div class="cap">Upstream state</div><div class="v" style="color:${!rc || dx.upstream.healthy ? "var(--green-2)" : "#ff9b9f"}">${!rc ? "—" : dx.upstream.healthy ? "Healthy" : `${dx.upstream.anomalous.length} anomalous`}</div></div>
-      <div class="kpi"><div class="cap">Final answer</div><div class="v" style="color:${failed ? "#ff9b9f" : "var(--green-2)"};font-size:15px">${esc(summarize(run.final))}</div><div class="muted" style="font-size:11.5px">expected ${esc(summarize(run.expected))}</div></div>
+      <div class="kpi"><div class="cap">Final answer</div><div class="v" style="color:${failed ? "#ff9b9f" : "var(--green-2)"};font-size:15px">${esc(summarize(run.final))}</div>${run.expected && Object.keys(run.expected).length ? `<div class="muted" style="font-size:11.5px">expected ${esc(summarize(run.expected))}</div>` : ""}</div>
     </div>
     <div class="split mt">
       <div class="card"><div class="hd"><div class="row"><span style="color:var(--indigo-3)">${icon("list")}</span><h2>EXECUTION TIMELINE</h2><span class="st ghost">${run.n_steps} spans</span></div>

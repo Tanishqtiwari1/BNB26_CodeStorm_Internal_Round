@@ -24,9 +24,12 @@ def primary_value(out):
     return None
 
 
-def norm_key(s):
+def norm_key(s, all_tools=False):
+    """Baseline key for a step's output value. `all_tools` (per-agent baselines for
+    external agents) keys every tool call by its scalar arguments, e.g. get_price|item=bread."""
     a = s["args"] if isinstance(s["args"], dict) else {}
-    if s["name"] in ("fx_rate", "flight_price", "db_lookup", "extract_rate", "per_diem", "taxi_fare"):
+    if s["name"] in ("fx_rate", "flight_price", "db_lookup", "extract_rate", "per_diem", "taxi_fare") or \
+            (all_tools and s["kind"] in ("tool", "retrieval")):
         sig = ",".join(f"{k}={a[k]}" for k in sorted(a) if k not in SKIP_ARGS and not isinstance(a[k], (list, dict)))
         return f"{s['name']}|{sig}"
     return s["role"]
@@ -43,10 +46,20 @@ def _atoms(x):
         yield x
 
 
+_EXPR = re.compile(r"[\d.\s()]+(?:[+\-*/][\d.\s()]+)+")
+
+
 def _match(a, pool_nums, pool_strs):
     if isinstance(a, (int, float)):
         return any(abs(a - b) <= 1e-6 * max(1, abs(b)) for b in pool_nums)
-    return str(a) in pool_strs
+    if str(a) in pool_strs:
+        return True
+    # An arithmetic expression ("2.5 * 2 + 1.25") is grounded when every number in it
+    # (other than the constants 0 and 1) comes from an upstream output.
+    if _EXPR.fullmatch(str(a)):
+        nums = [float(x) for x in re.findall(r"\d+(?:\.\d+)?", str(a))]
+        return all(_match(x, pool_nums, pool_strs) for x in nums if x not in (0.0, 1.0))
+    return False
 
 
 def _nulls(x, path=""):
@@ -76,7 +89,7 @@ def _pool(s, by):
 
 
 # ------------------------------------------------------------------ norms
-def build_norms(runs_steps, floor=0.05):
+def build_norms(runs_steps, floor=0.05, all_tools=False):
     """runs_steps: iterable of step-lists from *successful training* runs."""
     vals, lat, doclen = defaultdict(list), defaultdict(list), []
     arg_hits = defaultdict(lambda: [0, 0])
@@ -94,7 +107,7 @@ def build_norms(runs_steps, floor=0.05):
             v = primary_value(s["output"])
             if v is not None and v != 0:
                 lv = math.log(abs(v))
-                vals[norm_key(s)].append(lv)
+                vals[norm_key(s, all_tools)].append(lv)
                 vals["role:" + s["role"]].append(lv)
             lat[s["kind"]].append(s["latency_ms"])
             if s["kind"] == "retrieval" and isinstance(s["output"], dict) and "text" in s["output"]:
@@ -179,7 +192,7 @@ def step_signals(steps, norms):
     for s in steps:
         d = {}
         v = primary_value(s["output"])
-        key = norm_key(s)
+        key = norm_key(s, norms.get("all_tools", False))
         nm = norms["vals"].get(key) or norms["vals"].get("role:" + s["role"])
         d["value"], d["norm_key"] = v, key
         d["norm_known"] = 1.0 if key in norms["vals"] else (0.5 if nm else 0.0)

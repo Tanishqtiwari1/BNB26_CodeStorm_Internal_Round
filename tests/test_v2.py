@@ -194,3 +194,10 @@ def test_api_otlp_ingest(client):
     assert run["agent"] == "external" and run["n_steps"] == 1
     assert client.get(f"/api/runs/{ids[0]}/diagnosis").status_code == 200
     assert client.post(f"/api/runs/{ids[0]}/replay", json={"sid": run["steps"][0]["sid"]}).status_code == 409
+
+
+def test_expression_args_grounded_number_by_number():
+    from blackbox.features import _match
+    assert _match("2.5 * 2 + 1.25", [2.5, 2.0, 1.25], set())
+    assert not _match("2.5 * 4 + 1.25", [2.5, 2.0, 1.25], set())  # 4 never observed upstream
+    assert _match("0.0 + 2.5 * 1", [2.5], set())  # constants 0 and 1 need no source

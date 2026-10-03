@@ -10,6 +10,7 @@ import threading
 
 from . import demo
 from . import faults as F
+from . import features as FT
 from . import faults_v2 as F2
 from . import llm
 from . import model as M
@@ -19,6 +20,7 @@ from .recorder import Recorder
 
 
 IDENTIFIED_THRESHOLD = 0.5  # a failure counts as "root cause identified" when the top step scores >= this
+BASELINE_MIN = 3  # healthy runs an external agent needs before value baselines switch on
 
 
 class Service:
@@ -54,23 +56,50 @@ class Service:
             self._cache.clear()
         return self._bundle
 
-    def analysis(self, run_id):
+    def baseline_runs(self, run):
+        """Earlier passing runs from the same external agent (OTLP service.name)."""
+        service = (run.get("meta") or {}).get("service")
+        rows = self.rec._q("SELECT run_id, meta_json FROM runs WHERE agent='external' AND success=1 "
+                           "AND parent_run_id IS NULL AND created < ? ORDER BY created DESC LIMIT 200", (run["created"],))
+        return [r["run_id"] for r in rows if json.loads(r["meta_json"] or "{}").get("service") == service]
+
+    def _bundle_for(self, run_id):
+        """External agents are judged against their own history, never the travel agent's:
+        value baselines come from that agent's earlier passing runs (none until BASELINE_MIN exist)."""
         b = self.bundle
+        run = self.rec.run(run_id)
+        if not run or run["agent"] != "external" or b.get("kind") != "v2":
+            return b, None
+        ids = self.baseline_runs(run)
+        active = len(ids) >= BASELINE_MIN
+        if active:
+            n = FT.build_norms((self.rec.steps(i) for i in ids), floor=0.01, all_tools=True)
+            norms = {**b["norms"], "vals": n["vals"], "literal_args": n["literal_args"], "all_tools": True}
+        else:
+            norms = {**b["norms"], "vals": {}, "literal_args": [], "all_tools": True}
+        info = {"service": (run.get("meta") or {}).get("service"), "healthy_runs": len(ids), "needed": BASELINE_MIN, "active": active}
+        return {**b, "norms": norms}, info
+
+    def analysis(self, run_id):
+        b, base = self._bundle_for(run_id)
+        key = (run_id, base and base["healthy_runs"])
         with self._lock:
-            if run_id in self._cache:
-                return self._cache[run_id]
+            if key in self._cache:
+                return self._cache[key]
         steps = self.rec.steps(run_id)
         if not steps:
             raise KeyError(run_id)
         a = M.analyze(b, steps)
+        a["baseline"] = base
         with self._lock:
-            self._cache[run_id] = a
+            self._cache[key] = a
         return a
 
     def top_suspect(self, run_id):
         """Cheap path (no explanations): top-ranked step and its score, stored per model version."""
-        b, tag = self.bundle, self.model_tag
-        hit = self.rec.get_diagnosis(run_id, tag)
+        b, base = self._bundle_for(run_id)
+        tag = self.model_tag
+        hit = None if base else self.rec.get_diagnosis(run_id, tag)
         if hit:
             return {"sid": hit["top_sid"], "name": hit["top_name"], "score": hit["top_score"], "p_fail": hit["p_fail"]}
         steps = self.rec.steps(run_id)
@@ -80,7 +109,8 @@ class Service:
         i = dx["ranking"][0]
         out = {"sid": steps[i]["sid"], "name": steps[i]["name"], "score": round(dx["probs"][i], 4),
                "p_fail": round(dx["p_fail"], 4)}
-        self.rec.save_diagnosis(run_id, tag, out["sid"], out["name"], out["score"], out["p_fail"])
+        if not base:  # external-agent diagnoses change as the agent's baseline grows
+            self.rec.save_diagnosis(run_id, tag, out["sid"], out["name"], out["score"], out["p_fail"])
         return out
 
     # ---------------------------------------------------------------- reads
@@ -159,8 +189,9 @@ class Service:
         idx = next((i for i, s in enumerate(steps) if s["sid"] == sid), None)
         if idx is None:
             raise KeyError(sid)
-        dx = M.diagnose(self.bundle, steps)
-        ex = M.explain(self.bundle, steps, dx, idx)
+        b, _ = self._bundle_for(run_id)
+        dx = M.diagnose(b, steps)
+        ex = M.explain(b, steps, dx, idx)
         return {"sid": sid, "score": round(dx["probs"][idx], 4), "rank": dx["ranking"].index(idx) + 1,
                 "evidence": ex["evidence"], "contribs": {k: round(v, 4) for k, v in ex["contribs"].items()}}
 
@@ -251,11 +282,19 @@ class Service:
     def ingest_otlp(self, payload, success=None):
         """Store traces from any OpenTelemetry-instrumented agent (OTLP/HTTP JSON)."""
         from .otel import otlp_json_to_steps
+        service = {}
+        for rs in payload.get("resourceSpans", []):
+            name = next((a["value"].get("stringValue") for a in rs.get("resource", {}).get("attributes", [])
+                         if a.get("key") == "service.name"), None) or "unknown-service"
+            for ss in rs.get("scopeSpans", []):
+                for sp in ss.get("spans", []):
+                    service.setdefault(sp["traceId"], name)
         ids = []
         for tid, t in otlp_json_to_steps(payload).items():
             ok = success if success is not None else not any(s["error"] for s in t["steps"])
-            ids.append(self.rec.save_run({"question": t["question"]}, t["steps"], {}, bool(ok), {}, None, split="external",
-                                         agent="external", meta={"trace_id": tid, "source": "otlp"}))
+            final = t["steps"][-1]["output"] if t["steps"] else {}
+            ids.append(self.rec.save_run({"question": t["question"]}, t["steps"], final, bool(ok), {}, None, split="external",
+                                         agent="external", meta={"trace_id": tid, "source": "otlp", "service": service.get(tid)}))
         self.rec.commit()
         return {"runs": ids}
 
