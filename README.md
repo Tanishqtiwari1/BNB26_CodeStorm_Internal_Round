@@ -1,262 +1,404 @@
-# BLACK BOX: AI Agent Flight Recorder
+<div align="center">
 
-**From Failure to Fix — Without Starting Over.**
+# ⬛ BLACK BOX — AI Agent Flight Recorder
+
+### From Failure to Fix — Without Starting Over.
+
+[![Live Demo](https://img.shields.io/badge/Live_Demo-Online-5b54f0?style=for-the-badge&logo=render&logoColor=white)](https://blackbox-flight-recorder.onrender.com)
+[![Python](https://img.shields.io/badge/Python-3.12+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-GenAI_spans-425CC7?style=for-the-badge&logo=opentelemetry&logoColor=white)](https://opentelemetry.io/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-GNN-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![Groq](https://img.shields.io/badge/Live_agent-Groq_gpt--oss--20b-F55036?style=for-the-badge)](https://groq.com/)
+[![Tests](https://img.shields.io/badge/tests-29_passing-10b981?style=for-the-badge)](#-testing)
+
+**🏁 Built for BNB'26 CodeStorm (GDG on Campus FCRCE) · Problem statement: _A Flight Recorder for AI Agents_**
 
 `DETECT → EXPLAIN → REPLAY → REPAIR → VERIFY`
 
-> Black Box learns to localize likely failure-causing steps from AI-agent execution traces, explains its diagnosis with evidence from the trace, and lets a developer replay from that step. It re-executes only what depends on the change, then compares the original and fixed runs.
+[**🌐 Home page**](https://blackbox-flight-recorder.onrender.com) · [**🖥️ Open the app**](https://blackbox-flight-recorder.onrender.com/app) · [**▶ Live demo**](https://blackbox-flight-recorder.onrender.com/app#/demo) · [**🔌 Connect your agent**](https://blackbox-flight-recorder.onrender.com/app#/connect) · [**📚 API docs**](https://blackbox-flight-recorder.onrender.com/docs)
 
+</div>
+
+---
+
+## 🎯 Overview
+
+AI agents are moving into production: they book travel, answer customers, process refunds and write code. When an agent gives a wrong answer, **nobody knows why**. A run can have 30 steps of model decisions and tool calls, and one bad value early on passes silently through every later step. The error only shows up at the end.
+
+Today engineers debug this by reading logs line by line, then **re-running the entire agent** to test a fix. That's slow, and it repeats every model call.
+
+**Black Box is a flight recorder for AI agents:**
+
+| | |
+|---|---|
+| 🎥 **Records** | every model decision and tool call as an **OpenTelemetry** trace |
+| 🔎 **Detects** | the failure and ranks the step that **caused** it with a **graph neural network**, not just the step where it surfaced |
+| 💡 **Explains** | why, with evidence from the trace: *"flight price 88,800, normally ≈ 888"* |
+| ⏪ **Replays** | from that step's **checkpoint**, reusing everything before it |
+| 🛠️ **Repairs** | by re-running the step, patching its output, or patching its arguments |
+| ✅ **Verifies** | the fix with the task check and a step-by-step diff of original vs repaired |
+
+> **Monitoring tools show what happened. Black Box shows where it went wrong and why, and lets you fix and verify it without re-running everything.**
+
+---
+
+## ✨ Key Features
+
+- 🧠 **Graph neural network diagnosis.** Directional message passing over the trace graph learns how errors propagate, so it finds the first bad step even when the error source moves or the agent takes a new path.
+- 🤖 **A real AI agent in the live demo.** A tool-calling agent driven by **Groq `openai/gpt-oss-20b`** (hosted) or **Ollama `qwen2.5:7b`** (local) plans every step itself.
+- 📡 **OpenTelemetry native.** GenAI semantic conventions (`gen_ai.operation.name`, `gen_ai.tool.name`, …): span parents give control flow, span links give data flow.
+- ⏪ **Checkpointed, dependency-aware replay.** State is event-sourced, so a replay restores the checkpoint and re-executes **~34% of steps on average**. The agent may re-plan after the patch.
+- 🧾 **Evidence, not guesses.** Every diagnosis comes with *expected vs observed* values, upstream health and the downstream blast radius.
+- 🔌 **Bring your own agent.** Upload a JSON trace, post OTLP/HTTP JSON, or try a completely different sample agent from the browser. Each agent is judged only against **its own** history.
+- 📊 **Honest metrics.** Every number in the UI is computed from recorded runs, stored diagnoses or saved replays, never invented.
+- ⌨️ **Built for debugging.** ⌘K command palette, keyboard navigation (↑/↓, Enter, R), interactive timeline, trace graph, patch editor, live replay console, side-by-side verification and a latency waterfall.
+
+---
+
+## 🏆 Results
+
+Measured on **5,000 dynamic-agent runs**. One labelled fault was injected per failing run, and every evaluation run was **never used for training**.
+
+| Top-1 root-cause localization | Seen faults | Unseen fault types | Error source moved | New agent behaviour |
+|---|:---:|:---:|:---:|:---:|
+| **🥇 Black Box (graph neural network)** | **93.1%** | **88.4%** | 86.2% | **93.5%** |
+| Gradient boosting + lineage features | 89.6% | 86.5% | **88.4%** | 88.5% |
+| Rule: first suspicious step | 65.7% | 84.8% | 78.0% | 67.3% |
+| Personalized PageRank (no learning) | 58.8% | 76.9% | 69.8% | 59.9% |
+| Random step | 2.9% | 4.3% | 3.0% | 3.0% |
+
+| Metric | Value |
+|---|---|
+| ✅ Failures fixed by repairing the **#1 suspect** | **90.9%** |
+| ✅ Fixed within **3 replays** | **98.1%** |
+| ⏪ Steps re-executed per replay (average) | **34%** (66% reused) |
+| 🎯 Root cause in the **top 3** | 96–100% on every split |
+| 📈 Run-failure detection from the trace alone | AUC 0.745 |
+
+All numbers come from `python -m blackbox.cli all` → `data/metrics.json`, the same file the app's **Evaluation** page reads.
+
+---
+
+## 🏗️ Architecture
+
+```mermaid
+flowchart LR
+    subgraph AGENTS["🤖 Agents"]
+        A1["ReAct tool-calling agent<br/>Groq gpt-oss-20b · Ollama qwen2.5:7b"]
+        A2["Benchmark policy<br/>(labelled faults)"]
+        A3["Your agent<br/>OTLP JSON · trace upload"]
+    end
+
+    subgraph RECORD["🎥 Record"]
+        O["OpenTelemetry spans<br/>parents = control flow<br/>links = data flow"]
+        R[("Flight recorder<br/>SQLite, event-sourced")]
+    end
+
+    subgraph DIAGNOSE["🧠 Diagnose"]
+        F["Trace-only signals<br/>grounding · baselines · errors"]
+        G["Graph neural network<br/>step ranking"]
+        X["Explanations<br/>expected vs observed"]
+    end
+
+    subgraph FIX["⏪ Fix"]
+        P["Checkpoint replay<br/>repair · patch output · patch args"]
+        V["Verify<br/>task check + step diff"]
+    end
+
+    subgraph SERVE["🌐 Serve"]
+        S["service.py"] --> API["FastAPI REST API"]
+        API --> W["Web: landing page + app"]
+    end
+
+    A1 --> O
+    A2 --> O
+    A3 --> O
+    O --> R --> F --> G --> X
+    G --> P --> V
+    R --> S
+    X --> S
+    V --> S
 ```
-AI AGENT FAILED → BLACK BOX FOUND WHERE → EXPLAINED WHY → REPLAYED FROM THAT POINT
-→ FIX TESTED → ONLY NECESSARY STEPS RE-RUN → ORIGINAL vs FIXED COMPARED
+
+### 🔄 The debugging loop
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Ag as 🤖 Agent
+    participant BB as ⬛ Black Box
+    participant Dev as 👩‍💻 Developer
+    Ag->>BB: Every step as an OpenTelemetry span
+    BB->>BB: Task check fails → DETECT
+    BB->>BB: GNN ranks steps → root cause + evidence (EXPLAIN)
+    BB->>Dev: "Step 07 flight_price: 88,800, normally ≈ 888"
+    Dev->>BB: Replay from Step 07 (re-run fresh or patch)
+    BB->>BB: Restore checkpoint, reuse steps 1–6 (REPLAY)
+    BB->>Ag: Re-execute only Step 07 and its dependents (REPAIR)
+    Ag-->>BB: New steps (the agent may re-plan)
+    BB->>Dev: ✅ Repair verified + original-vs-repaired diff (VERIFY)
 ```
 
-## The product loop (every stage is real functionality)
+### 🧩 Components
 
-| Stage | What happens | Where in the UI | Backed by |
-|---|---|---|---|
-| **DETECT** | The task check flags failed runs; the run model scores failure risk from the trace | Overview metrics, Runs | `judge`, `run_clf` |
-| **EXPLAIN** | The likely root-cause step, its confidence (step-model score), and evidence with *expected vs observed* values from the trace | Trace Investigation | `model.analyze` / `explain` |
-| **REPLAY** | Restore the checkpoint; re-execute the step and its data-flow descendants; reuse the rest | Replay & Repair → Checkpoint | `replay.fork` |
-| **REPAIR** | Re-run the step fresh, patch its output, or patch its arguments (Apply Patch → Run Replay) | Replay & Repair → Repair | `replay.fork(mode=…)` |
-| **VERIFY** | Re-judge the repaired run and diff it against the original | Replay & Repair → Verify, Comparisons | `judge`, `replay.compare` |
+| Layer | Module | Responsibility |
+|---|---|---|
+| **Agent** | `react_agent.py` | Tool-calling loop with Groq, Ollama and scripted (benchmark) policies |
+| **Tracing** | `otel.py`, `sdk.py` | OpenTelemetry spans → step graph; OTLP/HTTP JSON ingestion |
+| **Recording** | `recorder.py` | Append-only SQLite log: args, outputs, timing, errors, data-flow parents |
+| **Faults** | `faults_v2.py`, `generate_v2.py` | 6 training + 3 held-out fault types; labelled benchmark with drift splits |
+| **Signals** | `features.py` | Trace-only features: grounding, per-tool baselines, retrieval checks, lineage |
+| **Model** | `graph_model.py`, `model_v2.py` | GNN (trained in PyTorch, NumPy inference), baselines, evaluation |
+| **Explain** | `model.py` | Occlusion-based evidence: which signal drives the score, expected vs observed |
+| **Replay** | `replay_v2.py`, `replay.py` | Checkpoint restore, patch, dynamic re-planning, aligned diff |
+| **Service** | `service.py` | The only layer the API calls; per-agent baselines for external agents |
+| **API** | `api.py` | FastAPI REST endpoints + static frontend |
+| **Web** | `web/` | Landing page + single-page app, plain HTML/CSS/JS, no build step |
 
-**Overview metrics are all real counts:**
-- **Executions:** recorded runs.
-- **Failures detected:** runs that failed the task check.
-- **Root causes identified:** failed runs whose top-ranked step scores ≥ 0.5, from stored diagnoses. This is a confidence threshold, not a correctness claim.
-- **Replay attempts:** saved replay runs.
-- **Repairs verified:** replays where a failed run passes the task check afterwards.
-- **Steps avoided:** steps reused instead of re-run, summed across replays.
-- **Model calls avoided / tool calls avoided / execution time not repeated:** reused model and tool steps across saved replays, with their recorded latency. No dollar figures are shown, because model costs aren't tracked.
+---
 
-The **Live Demo** page walks through all ten steps against the live backend: run, fail, detect, root cause, why, checkpoint, patch, re-execute, compare, verify. The suggested repair is derived from the trace (e.g. re-run the faulty tool call), not hard-coded.
+## 🛠️ Tech Stack
 
-## v2 (what is deployed): graph-based debugging of dynamic agents
+| Area | Technology |
+|---|---|
+| **Backend** | Python 3.12+, FastAPI, Uvicorn |
+| **AI agent** | Groq (`openai/gpt-oss-20b`), Ollama (`qwen2.5:7b`), native tool calling |
+| **ML** | PyTorch (GNN training), NumPy (inference), scikit-learn (gradient boosting, run-failure model) |
+| **Tracing** | OpenTelemetry SDK, GenAI semantic conventions, OTLP/HTTP JSON |
+| **Storage** | SQLite (event-sourced flight recorder) |
+| **Frontend** | Vanilla HTML/CSS/JS, Geist + JetBrains Mono, no framework or build step |
+| **Hosting** | Render (free tier), GitHub Pages redirect |
 
-The v1 agent followed a fixed plan, and its diagnosis model scored steps one at a time. v2 removes both assumptions.
+---
 
-- **A real agent that decides its own steps.** A tool-calling loop where the next call (search hotel, FX, flights, per-diem, taxi, calculator, final answer) is chosen each turn:
-  - by a real language model: **Ollama** `qwen2.5:7b` when running locally (`BLACKBOX_SLM`), or **Groq** `openai/gpt-oss-20b` on the hosted site (`GROQ_API_KEY`);
-  - or, for the large labelled benchmark, by a deterministic stochastic policy.
+## 📋 Prerequisites
 
-  Order, retries, shared lookups and verification calls differ run to run, so **every trace has its own graph shape**.
-- **OpenTelemetry tracing.** Every decision and tool call is an OTel span using the GenAI semantic conventions (`gen_ai.operation.name`, `gen_ai.tool.name`, `gen_ai.request.model`).
-  - Control flow comes from span parents; data flow from span links, found by tracing which earlier observation produced each value the model used.
-  - `POST /api/otlp/v1/traces` accepts OTLP/HTTP JSON from any instrumented agent.
-- **Graph neural network for root cause.** Directional message passing over the trace graph, using only per-step facts (grounding, baseline deviation, retrieval checks, errors, node type, degree). It learns how errors propagate, so it keeps working when the error source moves or the graph shape changes. It's trained with PyTorch; inference is plain NumPy.
-- **New drift evaluation:**
-  - **Error source moved:** training fault types injected at locations never faulted in training.
-  - **New agent behaviour:** a different policy, so graph shapes never seen in training.
-- **Dynamic replay.** Restore the checkpoint, patch or re-run the step, and **let the agent re-plan**. Tool calls with unchanged inputs are reused from the recording; new ones are executed. Comparison aligns traces of different shapes.
+- Python **3.12+**
+- *(Optional)* a [Groq API key](https://console.groq.com/keys) for a real model in the live demo
+- *(Optional)* [Ollama](https://ollama.com) with `qwen2.5:7b` to run the agent locally
+- *(Optional)* PyTorch, only if you want to **retrain** the GNN
 
-### v2 results (5,000 dynamic-agent runs; top-1 root-cause localization on runs never used for training)
+---
 
-| Method | Seen faults | Unseen fault types | Error source moved | New agent behaviour |
-|---|---|---|---|---|
-| **Graph neural network** | **93.1%** | **88.4%** | 86.2% | **93.5%** |
-| Gradient boosting + hand-made lineage features (v1 approach) | 89.6% | 86.5% | **88.4%** | 88.5% |
-| First-suspicious rule | 65.7% | 84.8% | 78.0% | 67.3% |
-| Personalized PageRank (no training) | 58.8% | 76.9% | 69.8% | 59.9% |
-| Random | 2.9% | 4.3% | 3.0% | 3.0% |
+## 🚀 Installation
 
-- **Top-3:** the GNN finds the root cause within its top 3 for 96–100% of runs on every split.
-- **Verified repairs:** repairing the #1 suspect fixes **90.9%** of failures, and **98.1%** within 3 replays.
-- **Replay cost:** a replay re-executes **34%** of steps on average.
-- **Run-failure detection:** AUC 0.745.
-
-### v2 commands
 ```bash
-./.venv/bin/pip install -r requirements.txt -r requirements-train.txt   # + PyTorch for training
-./.venv/bin/python -m blackbox.cli all        # generate 5,000 dynamic runs → train GNN/GBM → evaluate → diagnose (~1 min)
-./.venv/bin/python -m blackbox.cli data       # regenerate data + diagnoses with the committed model (no PyTorch; used on Render)
-./.venv/bin/python -m blackbox.cli all-v1     # the original fixed-plan benchmark
-brew install ollama && ollama serve & ollama pull qwen2.5:7b   # real SLM for the live agent (optional)
+# 1. Clone
+git clone https://github.com/Tanishqtiwari1/BNB26_CodeStorm_Internal_Round.git
+cd BNB26_CodeStorm_Internal_Round
+
+# 2. Install
+python3 -m venv .venv
+./.venv/bin/pip install -r requirements.txt
+
+# 3. Build the benchmark data + diagnoses with the committed model (no PyTorch needed)
+./.venv/bin/python -m blackbox.cli data
+
+# 4. Run
+./.venv/bin/uvicorn blackbox.api:app --port 8000
 ```
 
-## Live app
+Open **http://localhost:8000** for the home page and **http://localhost:8000/app** for the app.
 
-- **Home page:** https://blackbox-flight-recorder.onrender.com. It explains the problem with a real recorded run; the hero card's *Replay from root cause* button runs an actual replay.
-- **App:** https://blackbox-flight-recorder.onrender.com/app (Overview, Trace Investigation, Replay & Repair, Comparisons, Evaluation, Live Demo, **Connect Your Agent**).
+### 🤖 Real model for the live agent (optional)
 
-Free tier: the first load can take 30–60 s while the server wakes up.
+```bash
+# Local, used first when it's running
+ollama serve & ollama pull qwen2.5:7b
 
-## Deploy (one click)
+# Hosted fallback (never commit keys)
+export GROQ_API_KEY=...
+```
+
+Without either, the live agent uses the deterministic benchmark policy, and the UI labels those runs as such.
+
+### 🧠 Retrain everything (optional)
+
+```bash
+./.venv/bin/pip install -r requirements-train.txt   # adds PyTorch
+./.venv/bin/python -m blackbox.cli all              # generate 5,000 runs → train GNN + GBM → evaluate → diagnose
+```
+
+---
+
+## ☁️ Deployment
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Tanishqtiwari1/BNB26_CodeStorm_Internal_Round)
 
-`render.yaml` regenerates the benchmark runs and diagnoses with the committed model (`python -m blackbox.cli data`, no PyTorch needed) and serves the app with uvicorn. Set `GROQ_API_KEY` in the Render dashboard so the live agent uses a real model. GitHub Pages can't host the app because it needs a Python backend; the Pages URL redirects to Render.
+`render.yaml` installs the requirements, rebuilds the benchmark data with the committed model (`python -m blackbox.cli data`), and starts Uvicorn. Add **`GROQ_API_KEY`** in the Render dashboard so the live demo uses a real model.
 
-## Quick start
+> ⏱️ Free tier: the server sleeps when idle and the first request can take 30–60 s. The database is rebuilt on each deploy, so live counters start from zero.
+
+---
+
+## 📊 Usage
+
+### 1️⃣ Watch it fix a failure (60 seconds)
+
+1. **Home page → ↻ Replay from root cause**, or **App → Live Demo → Run all**.
+2. A real model plans a New York → Paris trip. An injected, labelled tool bug makes the flight API return **cents instead of dollars**, and the agent answers **$90,271, over budget**.
+3. Black Box flags **Step 07 `flight_price`** at ~99% confidence: *"88,800 deviates 50σ from the baseline (typical ≈ 888)."*
+4. Replay reuses 6 steps, re-runs the rest, and the agent re-plans: **$2,359.20, within budget. ✅ Repair verified.**
+
+### 2️⃣ Connect your own agent
+
+Upload a trace on **App → Connect Your Agent**, or post one from any language:
 
 ```bash
-python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
-./.venv/bin/python -m blackbox.cli data             # 5,000 benchmark runs + diagnoses with the committed model
-./.venv/bin/uvicorn blackbox.api:app --port 8000    # API + web UI → http://localhost:8000
-./.venv/bin/python -m pytest -q                     # tests (v1 + v2)
+curl -X POST https://blackbox-flight-recorder.onrender.com/api/traces \
+  -H "Content-Type: application/json" \
+  -d @demo_traces/hotel_booking_bug.json
+# → {"runs": ["<run id>"]}  then open /app#/investigate/<run id>
 ```
 
-Real model for the live agent (optional; without one, runs use the labelled benchmark policy):
-```bash
-ollama serve & ollama pull qwen2.5:7b    # local, used first when running
-export GROQ_API_KEY=...                  # hosted fallback (never commit keys)
+The simple trace format is one JSON object per run:
+
+```json
+{
+  "question": "Refund order A-1042",
+  "service": "my-support-bot",
+  "success": false,
+  "steps": [
+    {"id": "t1", "name": "get_order", "kind": "tool", "output": {"total": 59.99}},
+    {"id": "d1", "name": "call:issue_refund", "kind": "llm", "parents": ["t1"],
+     "output": {"tool": "issue_refund", "args": {"amount": 599.9}}}
+  ]
+}
 ```
 
-## v1 results (fixed-plan agent, kept for comparison)
+Step kinds: `input` · `llm` · `tool` · `retrieval` · `final`. `parents` lists the earlier steps whose output this step used. OpenTelemetry exporters can post **OTLP/HTTP JSON** to `/api/otlp/v1/traces`.
 
-The original fixed-plan benchmark (`python -m blackbox.cli all-v1`, `data/metrics_v1.json`): gradient boosting reached 94.0% top-1 on seen and 85.0% on unseen failure types. The v2 numbers above are the ones the deployed app shows.
+**Ready-made demo traces** are in [`demo_traces/`](demo_traces/):
 
-## Problem statement → implementation
-
-| Requirement | Where |
-|---|---|
-| 1. Capture execution history | `recorder.py`: append-only SQLite log of every step (args, output, timing, errors, **data-flow parents**). `sdk.py` records any Python agent the same way. |
-| 2. Learn from successful & failed runs | `model.train`: step-ranking model (failed runs) + run-failure model (all runs); historical baselines are built from successful runs. |
-| 3. Identify the problematic step | `model.diagnose` / `model.analyze`: per-step root-cause score and ranking. |
-| 4. Explain with evidence | `model.explain`: removes each signal, re-scores, and turns the facts that matter into evidence text. |
-| 5. Checkpointed replay | State after step *k* = fold of recorded outputs (event sourcing); `replay.fork` restores it. |
-| 6. Alternative paths / fixes | `replay.fork` modes: **repair** (re-run fresh), **patch_output**, **patch_args**. |
-| 7. Don't re-run unaffected steps | Only step *k* and its data-flow descendants re-execute; the rest are reused verbatim. |
-| 8. Evaluate against known failures | `faults.py` injects one labelled root cause per faulty run; `model.evaluate`. |
-| 9. Generalize to unseen failures | 3 fault categories are held out from training entirely (`heldout` split). |
-| 10. Compare executions | `replay.diff` / `replay.compare`: step-aligned diff, first divergence, outcome change. |
-
-## Architecture
-
-```
-            ┌──────────── agents/ (adapters) ────────────┐
- user task →│ travel-llm: LLM parse → retrieval → LLM     │──► Recorder (SQLite) ──► features.py ──► model.py
-            │   extract → tools → LLM answer               │        ▲    (trace-only signals)   (rank + explain)
-            │ travel-sim: same DAG, simulated (benchmark)  │        │                               │
-            └──────────────────────────────────────────────┘        │                               ▼
-                         ▲ re-invokes real step functions      replay.py ◄── service.py ◄── api.py (FastAPI) ◄── web/ (UI)
-                         └──────────────────────────────── (descendants only)
-```
-
-- `blackbox/agents/` holds adapters: each one supplies an agent's step DAG, task checker and latency policy. Replay re-runs steps through the adapter, so it calls the agent's real functions (and the real LLM, for `travel-llm`). SDK-recorded runs are tagged `external`: they can be diagnosed but not replayed, because no adapter exists to re-invoke them.
-- `service.py` is the only layer the API calls. Routes contain no ML logic.
-
-## ML approach
-
-> This section describes the v1 step features. v2 reuses them as node features and adds the GNN over the trace graph (see the v2 section above).
-
-- **Labels for free:** `faults.py` breaks exactly one step per faulty run, so the true root cause is known.
-- **Fault-agnostic features only** (`features.py`), computed from the observable trace:
-  - Argument grounding: are args traceable to parent outputs? Constant arguments are learned from history.
-  - Output grounding: are LLM outputs present in the prompt or context?
-  - Deviation from per-tool historical baselines (z-scores).
-  - Null fields, and document relevance and length.
-  - Lineage: is this the earliest anomaly among the step's ancestors?
-  - Blast radius: anomalies downstream.
-  - Errors and retries.
-- **The model never sees** fault labels, the step's identity (which tool it is), its position, or timing. Timing is excluded because real-API latencies differ from the simulated corpus.
-- **Model:** `HistGradientBoostingClassifier`, scored per step and ranked within each run. A second classifier predicts run failure.
-- **Baselines** compete on the same traces: first-suspicious rule, highest anomaly, last step, random.
-
-## Dataset & evaluation methodology
-
-> The v1 corpus is described here. v2 uses the same idea with 5,000 dynamic-agent runs and two extra drift splits (`drift_loc`, `drift_topo`); see `blackbox/generate_v2.py`.
-
-`blackbox/generate.py` runs the simulated agent 5,000 times (35% clean, 65% with exactly one injected fault):
-
-| Split | Contents | Used for |
+| File | Story | Black Box finds |
 |---|---|---|
-| `train` (70%) | clean runs + runs with **training** fault types | training |
-| `test` (30%) | clean runs + runs with **training** fault types | "seen" evaluation |
-| `heldout` | runs with **held-out** fault types only | "unseen" evaluation |
+| `hotel_booking_bug.json` | Booking agent books hotel **H-212** instead of **H-221** | The booking decision: "H-212 never appeared in any input" |
+| `refund_bot_bug.json` | Support bot refunds **$599.90** for a **$59.99** order | The refund decision: "599.9 never appeared in any input" |
 
-**Training faults:** wrong_arg, unit_mixup, irrelevant_retrieval, hallucinated_value, dropped_field, wrong_operation.
-**Held-out faults (never trained on):** truncated_context, off_by_one, stale_cache.
-
-Splits are assigned per run before training. The test suite verifies that diagnosis output is identical when a run's fault labels are deleted.
-
-## How replay works
-
-1. Load the recorded run and rebuild the agent's plan through its adapter.
-2. Compute the chosen step's data-flow descendants.
-3. For every step in plan order: if it's not affected, reuse its recorded output; otherwise re-execute it via the agent's real step function (applying the patch at the chosen step).
-4. Judge the new final answer, save it as a fork run (`parent_run_id`, `fork_sid`, `fork_mode`), and diff it against the original.
-
-Injected faults elsewhere in the run persist, because only the chosen step changes. Replay randomness is seeded with a stable hash, so results are reproducible.
-
-## The real-agent demo (Live Demo page)
-
-A real model (Groq `openai/gpt-oss-20b` hosted, Ollama `qwen2.5:7b` locally) plans every tool call for: *New York → Paris, 3 nights at Hotel Lumiere, budget $2,460.*
-
-- **Injected, labelled fault:** the flight-price API returns the fare in cents (88,800 instead of 888). This is a simulated tool bug, shown as such in the UI.
-- The model trusts the tool and answers **$90,271, over budget**; the task check expects **$2,359, within budget**.
-- If no model is reachable, the run falls back to the benchmark policy with a hallucinated hotel price, and the run is labelled with what drove it.
-
-## 60-second judge demo
-1. **Live Demo → Start demo** (or *Run all*). The real model runs the trip estimate and fails: $90,271 over budget vs the expected $2,359.
-2. **Root cause:** Step 07, `flight_price`, ~99% confidence. **Why:** "Output 88,800 deviates 50σ from the historical baseline (typical ≈ 888)", and every upstream step looks normal. The 3 downstream steps that consumed the bad value are marked as impacted.
-3. **Replay from the checkpoint:** 6 steps are reused from the recording; only the tool call and what depends on it re-run, and the model re-plans from there.
-4. **Verified repair:** $2,359.20, within budget. The comparison page shows the step-aligned diff and a latency waterfall in which the reused steps cost nothing.
-5. *(Optional)* Open **Trace Investigation** on any benchmark run, press ↑/↓ to walk the steps, or reveal the ground-truth label: "Black Box ranked it #1".
-6. *(Optional)* Run `python examples/my_agent.py` to send a completely different agent's trace and investigate it live (see below).
-
-## Bring your own agent (OpenTelemetry)
-
-`examples/my_agent.py` is a small grocery-budget agent unrelated to the travel agent, with three strategies (`plan_first`, `running_total`, `verify`) that give different trace graphs, and optional bugs (`cents`, `wrong_qty`, `skip_tax`). It sends standard OTLP/HTTP JSON spans to `/api/otlp/v1/traces`, standard library only:
+### 3️⃣ A completely different agent, from the terminal
 
 ```bash
-python examples/my_agent.py --healthy 5                              # teach Black Box this agent's normal
-python examples/my_agent.py --strategy running_total --bug cents     # then break it
+python3 examples/my_agent.py --healthy 5                            # teach Black Box this agent's normal
+python3 examples/my_agent.py --strategy running_total --bug cents   # then break it
 ```
 
-No terminal needed: the app's **Connect Your Agent** page (`/app#/connect`) offers three ways to try this:
-- run the grocery agent from the browser;
-- upload a trace file (Black Box's simple JSON format or OTLP JSON), with a refund-bot example (`web/example_trace.json`);
-- copy-paste snippets for Python, curl and OpenTelemetry.
+A grocery-budget agent with 3 strategies (different trace graphs) and 3 bugs, sending real OpenTelemetry spans.
 
-The simple format is one JSON object per run: `{"question", "service", "success", "steps": [{"id", "name", "kind", "parents", "args", "output"}]}`. Post it to `POST /api/traces`.
+### 🔗 API
 
-External agents are judged only against **their own** earlier passing runs (the OTLP `service.name`); value baselines switch on after 3 healthy runs, and the investigation page shows which baseline was used.
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/api/info` · `/api/stats` · `/api/metrics` | Model, live agent, counters, evaluation |
+| `GET` | `/api/runs` · `/api/runs/{id}` · `/api/runs/{id}/trace` | Recorded runs and traces |
+| `GET` | `/api/runs/{id}/diagnosis` · `/api/runs/{id}/steps/{sid}/explanation` | Root cause, evidence, impact |
+| `POST` | `/api/runs/{id}/replay` `{sid, mode, patch}` | Replay from a checkpoint (`repair` · `patch_output` · `patch_args`) |
+| `GET` | `/api/compare?a=&b=` · `/api/replays` · `/api/runs/{id}/forks` | Original vs repaired |
+| `POST` | `/api/demo/killer` · `/api/agent/run` | Run the live agent |
+| `POST` | `/api/traces` · `/api/otlp/v1/traces` | Ingest traces from any agent |
+| `GET`/`POST` | `/api/connect/options` · `/api/connect/sample` | In-browser sample agent |
 
-**Measured locally on this agent** (18 failed runs, 3 strategies × 3 bugs × 2 seeds, after 6 healthy runs): the true root cause is ranked #1 in **9/18**. Results by bug: unit bug 4/6, wrong quantity 3/6, missing tax step 2/6. The model was trained only on the travel workflow, so this is the honest transfer number: it shows the pipeline works on any OTel agent, and that accuracy on a new agent is lower until that agent has its own training data.
+Interactive docs: **[/docs](https://blackbox-flight-recorder.onrender.com/docs)**
 
-## Claims we can make
-- Black Box **learns** to localize failure-causing steps from execution traces of a dynamic tool-calling agent: **93.1%** top-1 on held-out runs, **88.4%** on failure types never seen in training, and 86–94% when the error source moves or the agent's behaviour (graph shape) changes. It beats rule-based and PageRank baselines.
-- Diagnoses are **explained** with facts from the trace and **verified** by replay: repairing the #1 suspect fixes 90.9% of failures, 98.1% within 3 replays.
-- Replay restores the checkpoint and re-executes about **34%** of steps on average, and the agent may re-plan after the patch.
-- A real language model drives the live demo, and every step is an **OpenTelemetry** span.
-- Any OpenTelemetry-instrumented agent can be **recorded and diagnosed** via OTLP; replay needs an adapter.
+---
 
-**Do not claim:** high accuracy on arbitrary new agents (measured 9/18 on one unfamiliar agent), benchmarking on real-world production failures, or production readiness.
+## 🔧 Configuration
 
-## Known limitations
-- **Synthetic benchmark.** Training and evaluation use one reference workflow (travel expense) with injected faults. On an unfamiliar agent, top-1 was 9/18 (see above).
-- **Baselines need history.** Value anomalies need earlier healthy runs of the same tool and arguments; a brand-new tool has weaker signals.
-- **Missing steps are hard.** When an agent skips a step (e.g. forgets tax), nothing anomalous is recorded at the cause, so the diagnosis lands downstream.
-- **Some runs can't be replayed.** Replay needs an adapter that can re-invoke the agent; OTLP/SDK-recorded runs are diagnosis-only.
-- **Hosted data resets.** On Render's free tier the database is rebuilt on each deploy, so live counters (replays, verified repairs) start from zero.
+| Variable | Description | Default |
+|---|---|---|
+| `GROQ_API_KEY` | Groq key for the hosted live agent | *(unset → Ollama or benchmark policy)* |
+| `GROQ_MODEL` | Groq model to use | auto-picks `openai/gpt-oss-20b` when available |
+| `GROQ_REASONING` | Reasoning effort for Groq models | `medium` |
+| `BLACKBOX_SLM` | Ollama model for the local agent | `qwen2.5:7b` |
+| `OLLAMA_HOST` | Ollama server URL | `http://localhost:11434` |
+| `BLACKBOX_DEMO_POLICY` | `slm` = real model in the demo when reachable | `slm` |
+| `BLACKBOX_DB` | Flight-recorder database | `data/blackbox.db` |
+| `BLACKBOX_MODEL` | Diagnosis model bundle | `data/model_v2.joblib` |
+| `BLACKBOX_METRICS` | Evaluation metrics file | `data/metrics.json` |
+| `BLACKBOX_BACKGROUND` | Diagnose stored failures in the background at startup | `1` |
 
-## Project layout
-```
-blackbox/agent.py       plan DAG + executor (simulated travel agent)
-blackbox/agents/        adapters: travel-llm (real LLM), travel-sim (benchmark)
-blackbox/llm.py         Anthropic client + offline mock + response cache
-blackbox/faults.py      6 training + 3 held-out fault types
-blackbox/generate.py    labelled corpus generation and splits
-blackbox/recorder.py    flight recorder (SQLite)
-blackbox/features.py    trace-only features and historical baselines
-blackbox/model.py       models, baselines, evaluation, explanations, analyze()
-blackbox/replay.py      checkpointed dependency-aware replay, diff, compare
-blackbox/demo.py        scripted demo scenario
-blackbox/service.py     application service (used by the API)
-blackbox/api.py         FastAPI endpoints + static UI
-blackbox/sdk.py         tracer for any Python agent
-blackbox/otel.py        OpenTelemetry spans → step graph (SDK + OTLP/HTTP JSON)
-blackbox/react_agent.py tool-calling agent: scripted, Ollama and Groq policies
-blackbox/faults_v2.py   v2 decision + tool faults
-blackbox/graph_model.py GNN + PageRank baselines
-blackbox/model_v2.py    v2 training, evaluation, diagnosis
-blackbox/replay_v2.py   dynamic replay (agent re-plans after the patch)
-examples/my_agent.py    bring-your-own-agent OTLP example
-web/                    landing page (landing.*) + app (index.html, app.js, style.css); plain HTML/CSS/JS, no build step
-tests/                  end-to-end tests
-app.py                  legacy Streamlit dashboard (still works)
+---
+
+## 🧪 Testing
+
+```bash
+./.venv/bin/python -m pytest -q     # 29 tests: v1 + v2 end to end
 ```
 
-## API
-`GET /api/info` · `GET /api/stats` · `GET /api/replays` · `GET /api/demo/patch/{id}` · `GET /api/runs` · `GET /api/runs/{id}` · `GET /api/runs/{id}/trace` · `GET /api/runs/{id}/diagnosis` · `GET /api/runs/{id}/steps/{sid}/explanation` · `POST /api/runs/{id}/replay` `{sid, mode: repair|patch_output|patch_args, patch}` · `GET /api/runs/{id}/forks` · `GET /api/compare?a=&b=` · `GET /api/metrics` · `POST /api/agent/run` · `POST /api/demo/killer` · `POST /api/otlp/v1/traces` · `POST /api/traces` (simple JSON or OTLP JSON) · `GET /api/connect/options` · `POST /api/connect/sample` `{strategy, bug}`. Interactive docs are at `/docs`.
+The tests cover:
+- the dynamic agent and its OpenTelemetry spans;
+- fault injection;
+- **no label leakage** (diagnosis is identical with labels deleted);
+- GNN training and evaluation;
+- dynamic replay;
+- expression grounding;
+- trace upload;
+- the bring-your-own-agent flow.
+
+---
+
+## ⚖️ Honest scope
+
+- **Synthetic benchmark.** Training and evaluation use one travel-expense workflow with injected faults. On a completely different agent, the true cause was ranked first in **9 of 18** failures; accuracy improves as Black Box builds that agent's own history.
+- **Missing steps are hard.** If an agent skips a step entirely, nothing anomalous is recorded at the cause.
+- **Replay needs an adapter.** The built-in agent is fully replayable; uploaded and OTLP traces are diagnosis-only.
+
+---
+
+## 🗺️ Roadmap
+
+- [x] Record (OpenTelemetry) → diagnose (GNN) → explain → replay → verify
+- [x] Real model in the live demo · bring-your-own-agent traces
+- [ ] **Replay any agent:** Black Box calls your agent back to re-run a step
+- [ ] **One-line setup:** pip package + binary OTLP, so LangChain and OpenAI Agents SDK connect with no changes
+- [ ] **Alerts:** Slack or email on failure, with the root cause attached
+- [ ] **Accounts & storage:** projects, API keys, permanent traces
+- [ ] **Learns from your fixes:** every verified repair becomes training data
+
+---
+
+## 📁 Project Structure
+
+```
+├── blackbox/
+│   ├── react_agent.py    # tool-calling agent: Groq, Ollama, scripted policies
+│   ├── otel.py           # OpenTelemetry spans → step graph, OTLP ingestion
+│   ├── recorder.py       # flight recorder (SQLite)
+│   ├── faults_v2.py      # decision + tool faults (6 training, 3 held-out)
+│   ├── generate_v2.py    # labelled benchmark with drift splits
+│   ├── features.py       # trace-only signals and per-agent baselines
+│   ├── graph_model.py    # GNN + PageRank baseline
+│   ├── model_v2.py       # training, evaluation, diagnosis
+│   ├── model.py          # analysis + evidence (explanations)
+│   ├── replay_v2.py      # dynamic checkpoint replay
+│   ├── replay.py         # diff / compare
+│   ├── demo.py           # live demo scenario
+│   ├── service.py        # application service
+│   ├── api.py            # FastAPI endpoints + static web
+│   └── cli.py            # data / train / eval commands
+├── web/                  # landing page + app (HTML/CSS/JS)
+├── examples/my_agent.py  # bring-your-own-agent example
+├── demo_traces/          # ready-made traces for the upload panel
+├── data/                 # committed model + metrics
+├── tests/                # 29 end-to-end tests
+└── render.yaml           # one-click deploy
+```
+
+---
+
+## 🙏 Acknowledgments
+
+- **GDG on Campus FCRCE** for organizing BNB'26 CodeStorm and the problem statement
+- **Our mentor**, whose feedback (real models, OpenTelemetry, a graph-based approach) shaped v2
+- **Groq** and **Ollama** for fast model inference
+- **OpenTelemetry** for the open tracing standard
+
+---
+
+<div align="center">
+
+**Built with ❤️ by [@Tanishqtiwari1](https://github.com/Tanishqtiwari1)**
+
+*Stop restarting failed agents. Find the step. Replay from the checkpoint.* ⬛
+
+</div>
