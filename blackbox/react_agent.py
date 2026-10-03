@@ -7,7 +7,8 @@ tool errors cause retries, verification re-calls create extra branches.
 Policies (who decides the next action):
   ScriptedPolicy  deterministic stochastic planner used to build the large
                   labelled benchmark quickly (variant="standard" | "verifier")
-  OllamaPolicy    a real small language model (default qwen2.5:1.5b via Ollama)
+  OllamaPolicy    a real small language model run locally (default qwen2.5:7b via Ollama)
+  GroqPolicy      a hosted open model via Groq (used where Ollama can't run, e.g. Render)
 
 Every turn produces OTel spans:
   call:<tool>  (gen_ai.operation.name=chat)          the model's decision
@@ -23,6 +24,7 @@ import os
 import random
 import re
 import time
+import urllib.error
 import urllib.request
 
 from opentelemetry import trace
@@ -318,6 +320,84 @@ class OllamaPolicy:
         if len(last) == 2 and all(x == json.dumps({"tool": act["tool"], "args": act["args"]}, sort_keys=True) for x in last):
             return {"tool": "final_answer", "args": {"total_usd": None, "within_budget": None, "summary": "stopped: repeated tool call"}, "need": None}
         return act
+
+
+class GroqPolicy(OllamaPolicy):
+    """Hosted open model via Groq's OpenAI-compatible API (key from GROQ_API_KEY, never logged)."""
+
+    PREFERRED = ["llama-3.1-8b-instant", "qwen/qwen3-32b", "openai/gpt-oss-20b", "llama-3.3-70b-versatile"]
+    BASE = "https://api.groq.com/openai/v1"
+    _models = None
+
+    def __init__(self, model=None):
+        self.key = os.environ.get("GROQ_API_KEY", "")
+        self.model = model or os.environ.get("GROQ_MODEL") or self._pick()
+
+    def _req(self, path, body=None):
+        req = urllib.request.Request(self.BASE + path, data=json.dumps(body).encode() if body is not None else None,
+                                     headers={"Authorization": f"Bearer {self.key}", "Content-Type": "application/json",
+                                              "User-Agent": "blackbox-flight-recorder"})
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                return json.load(r)
+        except urllib.error.HTTPError as e:
+            from .llm import LLMError
+            detail = e.read().decode(errors="replace")[:200]
+            raise LLMError(f"Groq HTTP {e.code}: {detail}") from None
+
+    def _pick(self):
+        if not self.key:
+            return self.PREFERRED[0]
+        if GroqPolicy._models is None:
+            try:
+                GroqPolicy._models = {m["id"] for m in self._req("/models").get("data", [])}
+            except Exception:
+                GroqPolicy._models = set()
+        return next((m for m in self.PREFERRED if m in GroqPolicy._models), self.PREFERRED[0])
+
+    def available(self):
+        return bool(self.key)
+
+    def _chat(self, messages):
+        import hashlib
+
+        from . import llm
+        oai, n = [], 0
+        for m in messages:  # Ollama-style history -> OpenAI tool-calling format
+            if m["role"] == "assistant" and m.get("tool_calls"):
+                n += 1
+                fn = m["tool_calls"][0]["function"]
+                oai.append({"role": "assistant", "content": None, "tool_calls": [
+                    {"id": f"call_{n}", "type": "function", "function": {"name": fn["name"], "arguments": json.dumps(fn["arguments"])}}]})
+            elif m["role"] == "tool":
+                oai.append({"role": "tool", "tool_call_id": f"call_{n}", "content": m["content"]})
+            else:
+                oai.append({"role": m["role"], "content": m["content"]})
+        llm._cache = llm._cache or llm._Cache()
+        h = hashlib.sha256(json.dumps(["groq", self.model, oai]).encode()).hexdigest()
+        hit = llm._cache.get(h)
+        if hit is not None:
+            return json.loads(hit)
+        r = self._req("/chat/completions", {"model": self.model, "messages": oai, "tools": TOOL_SPECS, "tool_choice": "auto",
+                                            "temperature": 0, "max_tokens": 512})
+        msg = r["choices"][0]["message"]
+        out = {"content": msg.get("content") or "", "tool_calls": [{"function": {"name": c["function"]["name"],
+               "arguments": c["function"].get("arguments") or "{}"}} for c in (msg.get("tool_calls") or [])]}
+        llm._cache.put(h, json.dumps(out))
+        return out
+
+
+def live_policy():
+    """The real model to use for live runs: local Ollama if running, else hosted Groq if a key is set."""
+    o = OllamaPolicy()
+    if o.available():
+        return o
+    g = GroqPolicy()
+    return g if g.available() else None
+
+
+def provider_of(policy):
+    return "groq" if isinstance(policy, GroqPolicy) else "ollama" if isinstance(policy, OllamaPolicy) else "scripted"
 
 
 # ---------------------------------------------------------------- provenance (data-flow edges)

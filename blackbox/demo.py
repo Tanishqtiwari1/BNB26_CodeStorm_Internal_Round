@@ -15,7 +15,7 @@ import re
 
 from . import agent as A
 from .faults_v2 import make_fault
-from .react_agent import OllamaPolicy, ScriptedPolicy, execute
+from .react_agent import ScriptedPolicy, execute, live_policy, provider_of
 
 WRONG_PRICE = 245.0
 
@@ -28,10 +28,11 @@ def killer_task():
     return task
 
 
-def run_killer(rec, prefer_slm=None):
+def run_killer(rec, prefer_slm=None, note=None):
     task = killer_task()
-    slm = OllamaPolicy()
-    use_slm = (prefer_slm if prefer_slm is not None else os.environ.get("BLACKBOX_DEMO_POLICY", "slm") == "slm") and slm.available()
+    want = prefer_slm if prefer_slm is not None else os.environ.get("BLACKBOX_DEMO_POLICY", "slm") == "slm"
+    slm = live_policy() if want else None
+    use_slm = slm is not None
     if use_slm:
         policy, agent = slm, "react-slm"
         fault = make_fault("unit_mixup", 0, seed=0)
@@ -41,12 +42,18 @@ def run_killer(rec, prefer_slm=None):
         fault = make_fault("hallucinated_value", 0, seed=0)
         fault["params"]["value"] = WRONG_PRICE
         fault["demo_note"] = f"Injected for the demo: the hotel-cost calculation used {WRONG_PRICE:g} EUR; the page says 180 EUR."
-    steps, final, _, fsid = execute(task, policy, fault=fault, seed=42)
+    try:
+        steps, final, _, fsid = execute(task, policy, fault=fault, seed=42)
+    except Exception as e:  # hosted model unavailable / rate-limited: keep the demo working, say so
+        if not use_slm:
+            raise
+        fallback = f"{provider_of(policy)} unavailable ({str(e)[:120]}); used the benchmark policy"
+        return run_killer(rec, prefer_slm=False, note=fallback)
     ok, gt = A.judge(task, final)
     fault["sid"] = fsid
     rid = rec.save_run(task, steps, final, ok, gt, fault, split="demo", agent=agent,
                        meta={"policy": getattr(policy, "variant", None), "model": policy.model,
-                             "provider": "ollama" if use_slm else "scripted"})
+                             "provider": provider_of(policy), "note": note})
     rec.commit()
     return rid
 

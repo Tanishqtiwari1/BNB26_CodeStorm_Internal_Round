@@ -16,12 +16,17 @@ import json
 import zlib
 
 from .agents import ReplayUnsupported
-from .react_agent import OllamaPolicy, ScriptedPolicy, execute
+from .react_agent import GroqPolicy, OllamaPolicy, ScriptedPolicy, execute
 
 
 def policy_for(run):
     meta = run.get("meta") or {}
     if run["agent"] == "react-slm":
+        if meta.get("provider") == "groq":
+            p = GroqPolicy(model=meta.get("model"))
+            if not p.available():
+                raise ReplayUnsupported("replaying this run needs GROQ_API_KEY to be set")
+            return p
         p = OllamaPolicy(model=meta.get("model"))
         if not p.available():
             raise ReplayUnsupported(f"replaying this run needs the local model {p.model} (start Ollama: `ollama serve`)")

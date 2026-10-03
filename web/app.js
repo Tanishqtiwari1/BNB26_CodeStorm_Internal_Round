@@ -70,7 +70,7 @@ function descendants(steps, sid) {
 let INFO = null;
 function agentBadge(run) {
   const a = run.agent, m = run.meta || {};
-  if (a === "react-slm") return `<span class="b blue nodot" title="A real small language model chose every tool call">SLM AGENT · ${esc(m.model)} (OLLAMA)</span>`;
+  if (a === "react-slm") return `<span class="b blue nodot" title="A real language model chose every tool call">REAL MODEL · ${esc(m.model)} (${esc((m.provider || "ollama").toUpperCase())})</span>`;
   if (a === "react-sim") return `<span class="b ghost nodot" title="Deterministic benchmark policy; same tools and trace format">BENCHMARK POLICY · ${esc(m.policy || "standard")}</span>`;
   if (a === "external") return `<span class="b blue nodot">EXTERNAL · ${esc(m.source === "otlp" ? "OPENTELEMETRY" : "SDK")}</span>`;
   if (a === "travel-llm") return m.provider === "anthropic" ? `<span class="b blue nodot">V1 LLM AGENT · ${esc(m.model)}</span>` : `<span class="b root nodot">V1 LLM AGENT · OFFLINE MOCK</span>`;
@@ -682,7 +682,7 @@ async function aboutView() {
     INFO = await api("/api/info");
     $("#api-st").innerHTML = `<span class="dot ok"></span>RECORDER ONLINE`;
     $("#llm-st").innerHTML = INFO.model_version === "v2"
-      ? `<span class="dot ${INFO.llm.slm_available ? "ok" : "warn"}"></span>SLM · ${esc(INFO.llm.slm)} ${INFO.llm.slm_available ? "READY" : "NOT RUNNING"}`
+      ? `<span class="dot ${INFO.llm.slm_available ? "ok" : "warn"}"></span>MODEL · ${esc(INFO.llm.slm)}${INFO.llm.slm_provider ? " (" + esc(INFO.llm.slm_provider.toUpperCase()) + ")" : ""} ${INFO.llm.slm_available ? "READY" : "NOT RUNNING"}`
       : `LLM · ${esc(INFO.llm.provider === "anthropic" ? INFO.llm.model : "OFFLINE MOCK")}`;
   } catch (_) { $("#api-st").innerHTML = `<span class="dot hit"></span>API OFFLINE`; }
   router();

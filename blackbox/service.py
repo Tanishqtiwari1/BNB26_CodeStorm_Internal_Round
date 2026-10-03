@@ -88,20 +88,22 @@ class Service:
         return os.path.exists(self.model_path) and self.bundle.get("kind") == "v2"
 
     def info(self):
-        from .react_agent import OllamaPolicy
-        slm = OllamaPolicy()
-        slm_up = slm.available()
+        from .react_agent import live_policy, provider_of
+        slm = live_policy()
+        slm_up = slm is not None
+        slm_name = f"{slm.model} ({provider_of(slm)})" if slm else "none (start Ollama or set GROQ_API_KEY)"
         v2 = self._v2()
         FF = F2 if v2 else F
         agents = []
         if v2:
-            agents = [{"name": "react-slm", "label": f"Tool-calling agent · {slm.model} (Ollama)", "available": slm_up,
+            agents = [{"name": "react-slm", "label": f"Tool-calling agent · {slm_name}", "available": slm_up,
                        "description": "A real small language model decides every tool call; the trace graph changes run to run."},
                       {"name": "react-sim", "label": "Tool-calling agent · benchmark policy", "available": True,
                        "description": "Deterministic stochastic policy used to build the labelled benchmark (no model download needed)."}]
         agents += [{"name": a.name, "label": a.label + " (v1, fixed plan)", "description": a.description, "available": True}
                    for a in ADAPTERS.values()]
-        return {"llm": {**llm.describe(), "slm": slm.model, "slm_available": slm_up}, "agents": agents, "model_version": "v2" if v2 else "v1",
+        return {"llm": {**llm.describe(), "slm": slm.model if slm else "qwen2.5:7b", "slm_provider": provider_of(slm) if slm else None,
+                        "slm_available": slm_up}, "agents": agents, "model_version": "v2" if v2 else "v1",
                 "train_faults": FF.TRAIN_FAULTS, "heldout_faults": FF.HELDOUT_FAULTS, "tool_faults": list(getattr(FF, "TOOL_FAULTS", {})),
                 "fault_descriptions": FF.DESCRIPTIONS, "model_ready": os.path.exists(self.model_path),
                 "trained_at": self.bundle.get("trained_at") if os.path.exists(self.model_path) else None,
@@ -210,14 +212,14 @@ class Service:
 
     def _run_react(self, agent, seed, fault_type):
         from . import agent as A
-        from .react_agent import OllamaPolicy, ScriptedPolicy, execute
+        from .react_agent import ScriptedPolicy, execute, live_policy, provider_of
         seed = random.randrange(10**6) if seed is None else int(seed)
         rng = random.Random(seed)
         task = A.make_task(rng)
         if agent == "react-slm":
-            policy = OllamaPolicy()
-            if not policy.available():
-                raise ValueError(f"the local model {policy.model} is not running (start it with `ollama serve`)")
+            policy = live_policy()
+            if policy is None:
+                raise ValueError("no real model available: start Ollama locally or set GROQ_API_KEY")
         else:
             policy = ScriptedPolicy("standard")
         fault = None
@@ -234,7 +236,7 @@ class Service:
             fault = fault if fsid else None
         rid = self.rec.save_run(task, steps, final, ok, gt, fault, split="live", agent=agent,
                                 meta={"model": policy.model, "policy": getattr(policy, "variant", None), "seed": seed,
-                                      "provider": "ollama" if agent == "react-slm" else "scripted"})
+                                      "provider": provider_of(policy)})
         self.rec.commit()
         return {"run_id": rid, "success": ok}
 
