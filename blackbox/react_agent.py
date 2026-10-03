@@ -333,17 +333,24 @@ class GroqPolicy(OllamaPolicy):
         self.key = os.environ.get("GROQ_API_KEY", "")
         self.model = model or os.environ.get("GROQ_MODEL") or self._pick()
 
-    def _req(self, path, body=None):
-        req = urllib.request.Request(self.BASE + path, data=json.dumps(body).encode() if body is not None else None,
-                                     headers={"Authorization": f"Bearer {self.key}", "Content-Type": "application/json",
-                                              "User-Agent": "blackbox-flight-recorder"})
-        try:
-            with urllib.request.urlopen(req, timeout=60) as r:
-                return json.load(r)
-        except urllib.error.HTTPError as e:
-            from .llm import LLMError
-            detail = e.read().decode(errors="replace")[:200]
-            raise LLMError(f"Groq HTTP {e.code}: {detail}") from None
+    def _req(self, path, body=None, attempts=4):
+        """POST/GET with rate-limit handling: on HTTP 429 wait as instructed (free tier is ~8k tokens/min)."""
+        from .llm import LLMError
+        for attempt in range(attempts):
+            req = urllib.request.Request(self.BASE + path, data=json.dumps(body).encode() if body is not None else None,
+                                         headers={"Authorization": f"Bearer {self.key}", "Content-Type": "application/json",
+                                                  "User-Agent": "blackbox-flight-recorder"})
+            try:
+                with urllib.request.urlopen(req, timeout=60) as r:
+                    return json.load(r)
+            except urllib.error.HTTPError as e:
+                detail = e.read().decode(errors="replace")
+                if e.code == 429 and attempt < attempts - 1:
+                    m = re.search(r"try again in ([\d.]+)(ms|s)", detail)
+                    wait = (float(m.group(1)) / (1000 if m.group(2) == "ms" else 1)) if m else float(e.headers.get("retry-after") or 10)
+                    time.sleep(min(wait + 0.5, 30))
+                    continue
+                raise LLMError(f"Groq HTTP {e.code}: {detail[:200]}") from None
 
     def _pick(self):
         if not self.key:
@@ -378,8 +385,10 @@ class GroqPolicy(OllamaPolicy):
         hit = llm._cache.get(h)
         if hit is not None:
             return json.loads(hit)
-        r = self._req("/chat/completions", {"model": self.model, "messages": oai, "tools": TOOL_SPECS, "tool_choice": "auto",
-                                            "temperature": 0, "max_tokens": 512})
+        body = {"model": self.model, "messages": oai, "tools": TOOL_SPECS, "tool_choice": "auto", "temperature": 0, "max_tokens": 512}
+        if "gpt-oss" in self.model:
+            body["reasoning_effort"] = "low"  # reasoning tokens count against the per-minute limit
+        r = self._req("/chat/completions", body)
         msg = r["choices"][0]["message"]
         out = {"content": msg.get("content") or "", "tool_calls": [{"function": {"name": c["function"]["name"],
                "arguments": c["function"].get("arguments") or "{}"}} for c in (msg.get("tool_calls") or [])]}
