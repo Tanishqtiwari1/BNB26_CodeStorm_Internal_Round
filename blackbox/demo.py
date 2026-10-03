@@ -2,8 +2,9 @@
 
 One traveler, New York -> Paris, 3 nights at Hotel Lumiere.
   * With Ollama running, a real SLM (default qwen2.5:7b) drives the agent and the
-    hotel search tool is made to return the page of a different hotel (an injected,
-    labelled environment fault). The model reads the wrong price and the answer is wrong.
+    flight API returns the outbound fare in cents (an injected, labelled environment
+    fault). The model uses it and the answer is wrong. (A wrong hotel page was tried
+    first: the model noticed and re-searched, so it is not used for the demo.)
   * Without Ollama, the deterministic benchmark policy runs and its hotel-cost
     calculation uses 245 EUR instead of the 180 EUR on the page (injected, labelled).
 Black Box must find the step on its own; the label is only for the audience reveal.
@@ -33,9 +34,8 @@ def run_killer(rec, prefer_slm=None):
     use_slm = (prefer_slm if prefer_slm is not None else os.environ.get("BLACKBOX_DEMO_POLICY", "slm") == "slm") and slm.available()
     if use_slm:
         policy, agent = slm, "react-slm"
-        fault = make_fault("irrelevant_retrieval", 0, seed=0)
-        fault["params"]["doc_hotel"] = "Thames View"
-        fault["demo_note"] = "Injected for the demo: the hotel search returned the page of Thames View (London) instead of Hotel Lumiere."
+        fault = make_fault("unit_mixup", 0, seed=0)
+        fault["demo_note"] = "Injected for the demo: the flight-price API returned the outbound fare in cents instead of dollars."
     else:
         policy, agent = ScriptedPolicy("standard"), "react-sim"
         fault = make_fault("hallucinated_value", 0, seed=0)

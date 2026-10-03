@@ -64,10 +64,14 @@ def _calc(expr):
 
 
 def run_tool(name, args):
-    if name == "search_hotel":
-        h = args["hotel"]
+    if name == "search_hotel":  # behaves like a search engine: best match for partial names
+        h = str(args.get("hotel", ""))
         if h not in W.HOTELS:
-            raise KeyError(f"unknown hotel {h}")
+            q = set(h.lower().replace(",", " ").split())
+            best = max(W.HOTELS, key=lambda x: len(q & set(x.lower().split())))
+            if not q & set(best.lower().split()):
+                raise KeyError(f"no hotel matches '{h}'")
+            h = best
         return {"text": W.hotel_doc(h)}
     if name == "fx_rate":
         return {"rate": W.FX_TO_USD[str(args["currency"]).upper()]}
@@ -230,12 +234,15 @@ class ScriptedPolicy:
 # ---------------------------------------------------------------- real SLM policy (Ollama)
 SYSTEM = """You are a travel-expense agent. Compute the exact total trip cost in USD by calling tools, one tool per turn.
 Procedure:
-1. For each hotel: search_hotel, read the Standard room nightly price and its currency, call fx_rate for that currency,
-   then calculator: price * nights * fx_rate * travelers.
-2. For each flight leg (origin to first city, city to next city) and the flight back to the origin: flight_price, then multiply by travelers.
-3. If per-diem is requested: per_diem for each city, calculator: allowance * nights * travelers.
-4. If airport taxis are requested: taxi_fare for each city, convert with fx_rate of its currency.
-5. calculator: sum of all components. Then final_answer with the total and whether it is within the budget.
+1. For each hotel: search_hotel with the exact hotel name, read ONLY the "Standard room" nightly price and its currency
+   (ignore city tax and breakfast), call fx_rate for that currency, then calculator: price * nights * fx_rate * travelers.
+2. Flights: one flight_price call per leg: origin to the first city, each city to the next city, and the flight back from the
+   last city to the origin. Each fare is per person, multiply by travelers.
+3. Only if per-diem is requested: per_diem for each city, then allowance * nights * travelers.
+4. Only if airport taxis are requested: one taxi_fare per city (not per traveler), converted with fx_rate.
+   The trip ALWAYS ends with a flight back: flight_price(origin=<last city>, destination=<origin>). Never skip it.
+5. calculator: add all components (hotels + every flight leg including the flight back + extras).
+   Then final_answer with that total; within_budget is true exactly when total_usd <= budget (e.g. 2300 <= 2460 is true).
 Only use numbers that appear in the question or in tool results. Never repeat a call you already made."""
 
 TOOL_SPECS = [
