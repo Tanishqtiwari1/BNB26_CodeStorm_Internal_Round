@@ -298,7 +298,11 @@ async function runsView(q) {
 
 // ================================================================== TRACE INVESTIGATION
 async function investigateLatest() {
-  const d = await api("/api/runs?status=failed&limit=1");
+  // Prefer a replayable run (demo first); uploaded/external traces can't be replayed.
+  const demo = await api("/api/runs?status=failed&split=demo&limit=1");
+  const any = await api("/api/runs?status=failed&limit=40");
+  const d = { runs: demo.runs.length ? demo.runs : any.runs.filter((r) => r.agent !== "external").slice(0, 1) };
+  if (!d.runs.length) d.runs = any.runs.slice(0, 1);
   if (!d.runs.length) { view().innerHTML = empty("NO FAILED RUNS", "Your agent executions are healthy.", `<a class="btn primary" href="#/demo">Run Live Demo</a>`); return; }
   location.replace(`#/investigate/${d.runs[0].run_id}`);
 }
@@ -482,7 +486,8 @@ async function investigate(id, q) {
 
 // ================================================================== REPLAY & REPAIR
 async function repairPicker() {
-  const [f, r] = await Promise.all([api("/api/runs?status=failed&limit=10"), api("/api/replays?limit=6")]);
+  const [f0, r] = await Promise.all([api("/api/runs?status=failed&limit=60"), api("/api/replays?limit=6")]);
+  const f = { runs: f0.runs.filter((x) => x.agent !== "external").slice(0, 10) };  // only replayable runs
   view().innerHTML = `
     <h1>Replay & Repair</h1><div class="sub">Pick a failed execution. Black Box restores the checkpoint at its diagnosed root cause; you change that step and only its dependents re-run.</div>
     <div class="grid" style="grid-template-columns:minmax(0,1.5fr) minmax(0,1fr)">
