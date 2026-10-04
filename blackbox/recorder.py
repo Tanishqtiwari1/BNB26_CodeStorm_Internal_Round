@@ -183,7 +183,7 @@ class Recorder:
         return {"runs": r["n"] or 0, "passed": int(r["ok"] or 0), "failed": (r["n"] or 0) - int(r["ok"] or 0),
                 "avg_steps": s["avg_steps"] or 0, "avg_duration_ms": s["avg_ms"] or 0, "replays": f["n"]}
 
-    # ---- legacy helpers (benchmark / Streamlit)
+    # ---- legacy helpers (benchmark)
     def runs_df(self, where="parent_run_id IS NULL"):
         import pandas as pd
         with self.lock:

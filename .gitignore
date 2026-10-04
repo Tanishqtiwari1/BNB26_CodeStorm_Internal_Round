@@ -8,3 +8,7 @@ data/llm_cache.db
 *.zip
 transfer/
 .claude/
+
+# local-only notes and presentation material
+PROJECT_HANDOFF.md
+presentation/
