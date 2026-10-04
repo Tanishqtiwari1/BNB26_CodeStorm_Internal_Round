@@ -9,7 +9,7 @@ const nn = (i) => String(i + 1).padStart(2, "0");
 const titleCase = (s) => s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 async function api(path, opts = {}) {
   const r = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
-  if (!r.ok) { let m = r.statusText; try { m = (await r.json()).detail || m; } catch (_) {} throw new Error(m); }
+  if (!r.ok) { let m = r.statusText; try { m = (await r.json()).detail || m; } catch (_) {} const e = new Error(m); e.status = r.status; throw e; }
   return r.json();
 }
 function stepName(s) {
@@ -70,7 +70,7 @@ function inspect(sid) {
   }
   document.querySelectorAll("#dbgnodes .node").forEach((n) => n.classList.toggle("sel", n.dataset.sid === sid));
 }
-async function heroReplay() {
+async function heroReplay(retried) {
   const b = $("#dbgreplay"); b.disabled = true; b.innerHTML = `<span class="spin"></span> Replaying…`;
   try {
     let body = { sid: DX.root_cause.sid, mode: "repair", patch: null };
@@ -82,7 +82,13 @@ async function heroReplay() {
       <b>${esc(summarize(RUN.final))}</b> → <b>${esc(summarize(r.final))}</b>. Only the root-cause step and what depends on it ran again. <a href="/app#/compare/${RUN.run_id}/${r.run_id}" style="color:var(--indigo-3);font-weight:600">Full comparison →</a>`;
     $("#dbgstatus").className = `badge ${r.success ? "ok" : "fail"}`; $("#dbgstatus").textContent = r.success ? "REPAIRED" : "STILL FAILING";
     b.innerHTML = "↺ Reset"; b.disabled = false; b.onclick = () => { renderHero(); };
-  } catch (e) { $("#dbgdiag").innerHTML = `<div class="h"><span>REPLAY FAILED</span></div>${esc(e.message)}`; b.innerHTML = "↻ Replay from root cause"; b.disabled = false; }
+  } catch (e) {
+    if (e.status === 404 && retried !== true) {
+      // The server restarted (free hosting resets runtime data): load a fresh recorded run and replay that one.
+      try { await loadShowcase(); return heroReplay(true); } catch (_) {}
+    }
+    $("#dbgdiag").innerHTML = `<div class="h"><span>REPLAY FAILED</span></div>${esc(e.message)}`; b.innerHTML = "↻ Replay from root cause"; b.disabled = false;
+  }
 }
 function renderHero() {
   const agent = RUN.agent === "react-slm" ? `${RUN.meta?.model || "real model"}` : RUN.agent === "react-sim" ? "benchmark agent" : RUN.agent;
@@ -207,6 +213,12 @@ req = urllib.request.Request(<span class="s">"${esc(o)}/api/traces"</span>,
 print(json.load(urllib.request.urlopen(req)))  <span class="c"># → {"runs": ["…"]}</span>`;
 }
 
+async function loadShowcase() {
+  const id = await showcaseRun();
+  [RUN, DX] = await Promise.all([api(`/api/runs/${id}`), api(`/api/runs/${id}/diagnosis`)]);
+  renderHero(); renderChain(); if (M) renderTabs();
+}
+
 // ------------------------------------------------------------------ boot
 (async () => {
   renderSnippet();
@@ -218,9 +230,7 @@ print(json.load(urllib.request.urlopen(req)))  <span class="c"># → {"runs": ["
     renderVs(); renderResults();
   } catch (e) { $("#status").innerHTML = `<i class="dot off"></i>API offline`; }
   try {
-    const id = await showcaseRun();
-    [RUN, DX] = await Promise.all([api(`/api/runs/${id}`), api(`/api/runs/${id}/diagnosis`)]);
-    renderHero(); renderChain(); if (M) renderTabs();
+    await loadShowcase();
   } catch (e) {
     $("#dbgtitle").textContent = "Could not load a recorded run";
     $("#dbgnodes").innerHTML = `<div class="muted" style="font-size:13px">${esc(e.message)}. <a href="/app" style="color:var(--indigo-3)">Open the app →</a></div>`;

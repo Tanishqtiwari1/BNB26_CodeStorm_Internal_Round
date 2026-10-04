@@ -715,13 +715,28 @@ async function demoView() {
       </div>`;
     const n = $("#next"); if (n) n.onclick = next;
     const a = $("#all"); if (a) a.onclick = runAll;
-    const r = $("#restart"); if (r) r.onclick = () => { i = 0; cards.length = 0; Object.keys(S).forEach((k) => delete S[k]); render(); };
+    const restart = () => { i = 0; cards.length = 0; auto = false; Object.keys(S).forEach((k) => delete S[k]); render(); };
+    const r = $("#restart"); if (r) r.onclick = restart;
+    $$("[data-restart]").forEach((b) => (b.onclick = restart));
   };
   async function next() {
     if (busy || i >= STEPS.length) return;
     busy = true; render();
     try { const html = await actions[i](); cards.push(`<div class="dcard"><div class="dh"><span class="cap">STEP ${nn(i)} · ${STEPS[i][1].toUpperCase()}</span><h3>${STEPS[i][0]}</h3></div>${html}</div>`); i++; }
-    catch (e) { cards.push(`<div class="errbox"><div class="t">STEP ${i + 1} FAILED${e.status ? ` · HTTP ${e.status}` : ""}</div><div class="mt">${esc(e.message)}</div></div>`); auto = false; }
+    catch (e) {
+      if (e.status === 404 && S.id && !S.recovered) {
+        // Free hosting wipes runtime data when the server restarts: start the demo again from Step 1.
+        Object.keys(S).forEach((k) => delete S[k]); S.recovered = true;
+        cards.length = 0; i = 0;
+        cards.push(`<div class="banner"><span class="ic">${icon("replay")}</span><div><div class="ttl">The server restarted and lost this run</div><div class="muted" style="font-size:13px">Free hosting resets its data on restart. Re-running the demo from Step 1…</div></div></div>`);
+        busy = false; render();
+        if (!auto) setTimeout(runAll, 400);
+        return;
+      }
+      if (cards.length && cards[cards.length - 1].startsWith('<div class="errbox"')) cards.pop();
+      cards.push(`<div class="errbox"><div class="t">STEP ${i + 1} FAILED${e.status ? ` · HTTP ${e.status}` : ""}</div><div class="mt">${esc(e.message)}</div><div class="mt"><button class="btn sm" data-restart>${icon("replay")}Restart demo</button></div></div>`);
+      auto = false;
+    }
     busy = false; render();
     $$("#cards > *").pop()?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
